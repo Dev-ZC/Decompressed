@@ -1,2 +1,2 @@
 # Decompressed
-An open source GPU-Native decompression framework for vector data.
+An open source GPU-Native decompression framework for vector embeddings.
