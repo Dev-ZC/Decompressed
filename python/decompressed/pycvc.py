@@ -197,7 +197,7 @@ def load_cvc(path: str, device="cpu", framework="torch", backend="auto"):
                 if framework == "torch":
                     import torch
                     src_gpu = torch.from_numpy(src_data).cuda()
-                    dst_slice = arr[offset:offset+rows]
+                    dst_slice = arr[offset:offset+rows].flatten()
                     
                     # Launch Triton kernel
                     n_elements = rows * dim
@@ -206,15 +206,15 @@ def load_cvc(path: str, device="cpu", framework="torch", backend="auto"):
                     
                     if compression == "fp16":
                         decompress_fp16_kernel[grid](
-                            src_gpu.data_ptr(), 
-                            dst_slice.data_ptr(),
+                            src_gpu, 
+                            dst_slice,
                             n_elements,
                             BLOCK_SIZE
                         )
                     else:  # int8
                         decompress_int8_kernel[grid](
-                            src_gpu.data_ptr(),
-                            dst_slice.data_ptr(),
+                            src_gpu,
+                            dst_slice,
                             chunk["min"],
                             chunk["scale"],
                             n_elements,
@@ -224,8 +224,12 @@ def load_cvc(path: str, device="cpu", framework="torch", backend="auto"):
                     
                 elif framework == "cupy":
                     import cupy as cp
-                    src_gpu = cp.asarray(src_data)
-                    dst_slice = arr[offset:offset+rows]
+                    import torch
+                    
+                    # Convert CuPy to PyTorch for Triton (Triton works best with PyTorch)
+                    src_torch = torch.as_tensor(cp.asarray(src_data), device='cuda')
+                    dst_slice = arr[offset:offset+rows].flatten()
+                    dst_torch = torch.as_tensor(dst_slice, device='cuda')
                     
                     # Launch Triton kernel
                     n_elements = rows * dim
@@ -234,21 +238,21 @@ def load_cvc(path: str, device="cpu", framework="torch", backend="auto"):
                     
                     if compression == "fp16":
                         decompress_fp16_kernel[grid](
-                            src_gpu.data.ptr,
-                            dst_slice.data.ptr,
+                            src_torch,
+                            dst_torch,
                             n_elements,
                             BLOCK_SIZE
                         )
                     else:  # int8
                         decompress_int8_kernel[grid](
-                            src_gpu.data.ptr,
-                            dst_slice.data.ptr,
+                            src_torch,
+                            dst_torch,
                             chunk["min"],
                             chunk["scale"],
                             n_elements,
                             BLOCK_SIZE
                         )
-                    cp.cuda.Device(0).synchronize()
+                    torch.cuda.synchronize()
                     
             offset += rows
 
