@@ -2,6 +2,7 @@
 requires = [
     "scikit-build-core>=0.5.0",
     "pybind11>=2.11.0",
+    "numpy>=1.20.0",
 ]
 build-backend = "scikit_build_core.build"
 
@@ -63,20 +64,21 @@ all = [
 [tool.scikit-build]
 # CMake configuration
 cmake.build-type = "Release"
-cmake.verbose = false
+cmake.verbose = true  # Show build output for debugging
 wheel.py-api = "py3"
 wheel.install-dir = "decompressed"
+minimum-version = "0.5"
+build-dir = "build/{wheel_tag}"
 
 # Source directory
 [tool.scikit-build.metadata.version]
 provider = "scikit_build_core.metadata.regex"
 input = "python/decompressed/__init__.py"
 
-# Tell scikit-build where to find Python source files
+# Graceful fallback if CMake fails - install pure Python
 [[tool.scikit-build.overrides]]
 if.failed-cmake = true
-inherit.cmake.define = []
-inherit.cmake.args = []
+wheel.cmake = false
 
 # Platform-specific settings
 [tool.scikit-build.cmake.define]
