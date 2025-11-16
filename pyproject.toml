@@ -64,7 +64,7 @@ all = [
 [tool.scikit-build]
 # CMake configuration
 cmake.build-type = "Release"
-cmake.verbose = true  # Show build output for debugging
+cmake.verbose = false
 wheel.py-api = "py3"
 wheel.install-dir = "decompressed"
 minimum-version = "0.5"
@@ -75,10 +75,8 @@ build-dir = "build/{wheel_tag}"
 provider = "scikit_build_core.metadata.regex"
 input = "python/decompressed/__init__.py"
 
-# Graceful fallback if CMake fails - install pure Python
-[[tool.scikit-build.overrides]]
-if.failed-cmake = true
-wheel.cmake = false
+# Note: If CMake fails, the build will fail
+# Users can install dependencies manually if needed
 
 # Platform-specific settings
 [tool.scikit-build.cmake.define]
