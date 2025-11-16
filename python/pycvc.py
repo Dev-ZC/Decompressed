@@ -1,10 +1,34 @@
 import json
 import numpy as np
 from pathlib import Path
+import sys
+from importlib import import_module
 
-from triton_kernels import decompress_fp16_kernel, decompress_int8_kernel
-from cvc.cpu import cvc_decompress_cpu  # CPU fallback
-from cvc.utils import get_cuda_ptr     # framework agnostic pointer helper
+# Import CPU fallback
+try:
+    from cvc.cpu import cvc_decompress_cpu
+except ImportError as e:
+    raise ImportError("Failed to import CPU decompression module. Make sure CVC is properly installed.") from e
+
+# Import CUDA utils
+try:
+    from cvc.utils import get_cuda_ptr  # framework agnostic pointer helper
+except ImportError as e:
+    get_cuda_ptr = None
+    if sys.platform != 'darwin':  # Don't warn on macOS where CUDA might not be available
+        import warnings
+        warnings.warn("CUDA utils not available. GPU decompression will not work.")
+
+# Import Triton kernels
+try:
+    from triton.decompress_fp16_triton import decompress_fp16_kernel
+    from triton.decompress_int8_triton import decompress_int8_kernel
+except ImportError as e:
+    decompress_fp16_kernel = None
+    decompress_int8_kernel = None
+    if sys.platform != 'darwin':  # Don't warn on macOS where Triton might not be available
+        import warnings
+        warnings.warn("Triton kernels not available. GPU decompression will fall back to CPU.")
 
 HEADER_MAGIC = b"CVCF"
 
