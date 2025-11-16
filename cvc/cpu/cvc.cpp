@@ -2,6 +2,7 @@
 #include <cstdint>
 #include <cmath>
 #include <cstring>
+ #include "cvc.h"
 
 // Convert FP16 to FP32 (IEEE 754 half -> single precision)
 static inline float fp16_to_fp32(uint16_t h) {
