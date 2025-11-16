@@ -117,29 +117,28 @@ endif()
 
 # Python bindings
 if(BUILD_PYTHON_BINDINGS)
-    pybind11_add_module(_cvc_native MODULE
-        python/bindings/cvc_bindings.cpp
-    )
-    
-    # Force inclusion of all symbols from static library
-    if(UNIX AND NOT APPLE)
-        target_link_libraries(_cvc_native PRIVATE 
-            -Wl,--whole-archive cvc -Wl,--no-whole-archive
-        )
-    elseif(APPLE)
-        target_link_libraries(_cvc_native PRIVATE 
-            -Wl,-force_load cvc
-        )
-    else()
-        target_link_libraries(_cvc_native PRIVATE cvc)
-    endif()
-    
+    # Compile sources directly into Python module (avoids static lib linking issues)
     if(CUDA_ACTUALLY_AVAILABLE)
+        pybind11_add_module(_cvc_native MODULE
+            python/bindings/cvc_bindings.cpp
+            ${CVC_SOURCES}
+            ${CUDA_SOURCES}
+        )
         target_link_libraries(_cvc_native PRIVATE CUDA::cudart)
         target_compile_definitions(_cvc_native PRIVATE WITH_CUDA=1)
+        set_target_properties(_cvc_native PROPERTIES
+            CUDA_SEPARABLE_COMPILATION ON
+            CUDA_RESOLVE_DEVICE_SYMBOLS ON
+        )
     else()
+        pybind11_add_module(_cvc_native MODULE
+            python/bindings/cvc_bindings.cpp
+            ${CVC_SOURCES}
+        )
         target_compile_definitions(_cvc_native PRIVATE WITH_CUDA=0)
     endif()
+    
+    target_include_directories(_cvc_native PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
     
     # Install to python package directory
     # For scikit-build-core: install to the root (scikit-build-core handles the package path)
