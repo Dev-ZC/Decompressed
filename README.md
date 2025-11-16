@@ -24,7 +24,12 @@ curl -sSL https://raw.githubusercontent.com/Dev-ZC/Decompressed/main/install.py 
 
 **Quick Install (Recommended):**
 ```bash
+# From PyPI (when published)
 pip install decompressed[gpu]
+
+# From GitHub (for now)
+pip install 'decompressed[gpu] @ git+https://github.com/Dev-ZC/Decompressed.git'
+
 # Installs everything: numpy + torch + triton
 # Works on: NVIDIA GPUs (CUDA), AMD GPUs (ROCm), Intel GPUs, and CPU
 ```
@@ -44,15 +49,15 @@ pip install decompressed
 **Advanced Options:**
 ```bash
 # Minimal (CPU-only, auto-builds CUDA if toolkit found)
-pip install decompressed
+pip install 'decompressed @ git+https://github.com/Dev-ZC/Decompressed.git'
 
 # With PyTorch + Triton (GPU-agnostic)
-pip install decompressed[gpu]
+pip install 'decompressed[gpu] @ git+https://github.com/Dev-ZC/Decompressed.git'
 
 # With CuPy + Triton (NVIDIA-only alternative)
-pip install decompressed[gpu-cupy]
+pip install 'decompressed[gpu-cupy] @ git+https://github.com/Dev-ZC/Decompressed.git'
 
-# Development
+# Development (local clone)
 git clone https://github.com/Dev-ZC/Decompressed.git
 cd Decompressed
 pip install -e ".[dev,gpu]"
