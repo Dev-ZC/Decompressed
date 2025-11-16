@@ -131,10 +131,10 @@ if(BUILD_PYTHON_BINDINGS)
     endif()
     
     # Install to python package directory
-    # For scikit-build-core: install to the package location
+    # For scikit-build-core: install to the root (scikit-build-core handles the package path)
     install(TARGETS _cvc_native 
-        LIBRARY DESTINATION decompressed
-        RUNTIME DESTINATION decompressed
+        LIBRARY DESTINATION .
+        RUNTIME DESTINATION .
     )
 endif()
 
