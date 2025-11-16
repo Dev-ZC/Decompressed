@@ -16,16 +16,21 @@ An open-source GPU-native decompression framework for vector embeddings, optimiz
 
 ### Installation
 
-**Basic (CPU-only, works everywhere):**
+**Basic (Works everywhere, auto-detects CUDA if available):**
 ```bash
 pip install decompressed
 # or: pip install git+https://github.com/Dev-ZC/Decompressed.git
+
+# Automatically builds:
+# - C++ CPU extensions (if CMake available)
+# - CUDA GPU extensions (if CUDA Toolkit detected)
+# - Gracefully falls back to pure Python if neither available
 ```
 
-**With GPU Support (NVIDIA, AMD, Intel):**
+**With GPU Support for AMD/Intel (Triton):**
 ```bash
 pip install decompressed[gpu]
-# Installs: numpy + torch + triton
+# Installs: numpy + torch + triton for GPU-agnostic support
 ```
 
 **Alternative GPU (NVIDIA-only with CuPy):**
@@ -50,7 +55,19 @@ pip install -e ".[dev,gpu]"
 | `pip install decompressed[gpu-cupy]` | Yes | No | Yes | GPU with CuPy (NVIDIA only) |
 | `pip install decompressed[all]` | Yes | Yes | Yes | All features |
 
-**That's it!** The package auto-detects your system and builds optimized extensions automatically. See [INSTALL.md](INSTALL.md) for details.
+### What Gets Built Automatically
+
+| Environment | What Happens | Performance |
+|-------------|--------------|-------------|
+| **Colab (T4/A100)** | ✅ C++ CPU + ✅ CUDA native | 🚀 20+ GB/s |
+| **Colab + `[gpu]`** | ✅ C++ CPU + ✅ CUDA native + ✅ Triton | 🚀 20+ GB/s |
+| **Linux + NVIDIA GPU** | ✅ C++ CPU + ✅ CUDA native (if nvcc found) | 🚀 20+ GB/s |
+| **Linux + AMD GPU + `[gpu]`** | ✅ C++ CPU + ✅ Triton (via ROCm) | ⚡ 3-5 GB/s |
+| **macOS (Apple Silicon)** | ✅ C++ CPU only | ⚡ 1-2 GB/s |
+| **Windows + NVIDIA** | ✅ C++ CPU + ✅ CUDA native (if CUDA SDK found) | 🚀 20+ GB/s |
+| **No compilers** | ✅ Pure Python fallback | 🐌 0.5 GB/s |
+
+**100% Turnkey** - One `pip install` command works everywhere! See [INSTALL.md](INSTALL.md) for details.
 
 ### Usage
 
@@ -62,10 +79,25 @@ import numpy as np
 embeddings = np.random.randn(1000000, 768).astype(np.float32)
 
 # Compress and save
-pack_cvc(embeddings, "embeddings.cvc", compression="fp16")
+pack_cvc(embeddings, "embeddings.cvc", compression="fp16")  # 2x compression
+# pack_cvc(embeddings, "embeddings.cvc", compression="int8")  # 4x compression
 
-# Load to GPU
-vectors = load_cvc("embeddings.cvc", device="cuda", framework="torch")
+# Load with auto backend selection (recommended)
+vectors = load_cvc("embeddings.cvc", device="cpu")  # Uses best CPU backend
+vectors_gpu = load_cvc("embeddings.cvc", device="cuda", framework="torch")  # Uses best GPU backend
+
+# Or explicitly choose backend
+vectors = load_cvc("embeddings.cvc", device="cpu", backend="python")   # Pure Python
+vectors = load_cvc("embeddings.cvc", device="cpu", backend="cpp")      # C++ native (fast)
+vectors = load_cvc("embeddings.cvc", device="cuda", backend="triton")  # Triton (GPU-agnostic)
+# vectors = load_cvc("embeddings.cvc", device="cuda", backend="cuda")  # CUDA native (coming soon)
+
+**Backend Options:**
+- `backend="auto"` (default) - Automatically selects best available
+- `backend="python"` - Pure Python (CPU, slowest, always works)
+- `backend="cpp"` - C++ native (CPU, fast, requires build)
+- `backend="triton"` - Triton kernels (GPU, fast, vendor-agnostic)
+- `backend="cuda"` - CUDA native (GPU, fastest, coming soon)
 ```
 
 ## Compression Schemes

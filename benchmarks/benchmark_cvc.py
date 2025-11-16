@@ -28,11 +28,11 @@ def detect_backends():
         print(f"✅ C++ Native Extensions: Available")
         print(f"   CUDA Support: {'✅ Yes' if CUDA_AVAILABLE else '❌ No'}")
         backend_cpp = True
-        backend_cuda = CUDA_AVAILABLE
+        backend_cuda_native = CUDA_AVAILABLE
     except ImportError:
         print(f"❌ C++ Native Extensions: Not built (using pure Python)")
         backend_cpp = False
-        backend_cuda = False
+        backend_cuda_native = False
     
     # Check for Triton
     try:
@@ -82,7 +82,7 @@ def detect_backends():
     
     # Determine expected backend
     if gpu_framework:
-        if backend_cuda:
+        if backend_cuda_native:
             expected = "CUDA Native (fastest)"
         elif backend_triton:
             expected = "Triton (GPU-compiled)"
@@ -100,7 +100,7 @@ def detect_backends():
     
     return {
         'cpp': backend_cpp,
-        'cuda': backend_cuda,
+        'cuda_native': backend_cuda_native,
         'triton': backend_triton,
         'gpu_framework': gpu_framework,
         'gpu_name': gpu_name
@@ -168,7 +168,7 @@ def run_benchmark(backends):
         print("=" * 70)
         
         # Determine which GPU backend will be used
-        if backends['cuda']:
+        if backends['cuda_native']:
             gpu_backend = "CUDA Native (fastest)"
         elif backends['triton']:
             gpu_backend = "Triton (GPU-compiled)"
