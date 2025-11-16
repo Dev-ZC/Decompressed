@@ -24,7 +24,12 @@ if(BUILD_CUDA)
         enable_language(CUDA)
         set(CMAKE_CUDA_STANDARD 17)
         set(CMAKE_CUDA_STANDARD_REQUIRED ON)
-        set(CMAKE_CUDA_ARCHITECTURES "70;75;80;86;89;90" CACHE STRING "CUDA architectures")
+        # Use native architecture for best performance, fallback to common architectures
+        if(CMAKE_CUDA_COMPILER_VERSION VERSION_GREATER_EQUAL "11.0")
+            set(CMAKE_CUDA_ARCHITECTURES "native" CACHE STRING "CUDA architectures")
+        else()
+            set(CMAKE_CUDA_ARCHITECTURES "70;75;80;86" CACHE STRING "CUDA architectures")
+        endif()
         set(CUDA_ACTUALLY_AVAILABLE ON)
         message(STATUS "✅ CUDA Toolkit found: Building with CUDA support")
     else()
@@ -124,11 +129,29 @@ if(BUILD_PYTHON_BINDINGS)
             ${CVC_SOURCES}
             ${CUDA_SOURCES}
         )
+        # Set source properties to identify CUDA files
+        set_source_files_properties(${CUDA_SOURCES} PROPERTIES LANGUAGE CUDA)
+        
         target_link_libraries(_cvc_native PRIVATE CUDA::cudart)
         target_compile_definitions(_cvc_native PRIVATE WITH_CUDA=1)
         set_target_properties(_cvc_native PROPERTIES
             CUDA_SEPARABLE_COMPILATION ON
             CUDA_RESOLVE_DEVICE_SYMBOLS ON
+            POSITION_INDEPENDENT_CODE ON
+            LINKER_LANGUAGE CXX
+        )
+        # Include CUDA directories
+        target_include_directories(_cvc_native PRIVATE 
+            ${CMAKE_CURRENT_SOURCE_DIR}
+            ${CUDAToolkit_INCLUDE_DIRS}
+        )
+        # CUDA compilation options
+        target_compile_options(_cvc_native PRIVATE
+            $<$<COMPILE_LANGUAGE:CUDA>:
+                --use_fast_math
+                --expt-relaxed-constexpr
+                -Xcompiler=-fPIC
+            >
         )
     else()
         pybind11_add_module(_cvc_native MODULE
@@ -136,9 +159,8 @@ if(BUILD_PYTHON_BINDINGS)
             ${CVC_SOURCES}
         )
         target_compile_definitions(_cvc_native PRIVATE WITH_CUDA=0)
+        target_include_directories(_cvc_native PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
     endif()
-    
-    target_include_directories(_cvc_native PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
     
     # Install to python package directory
     # For scikit-build-core: install to the root (scikit-build-core handles the package path)
