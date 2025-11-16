@@ -124,34 +124,37 @@ endif()
 if(BUILD_PYTHON_BINDINGS)
     # Compile sources directly into Python module (avoids static lib linking issues)
     if(CUDA_ACTUALLY_AVAILABLE)
-        pybind11_add_module(_cvc_native MODULE
-            python/bindings/cvc_bindings.cpp
-            ${CVC_SOURCES}
-            ${CUDA_SOURCES}
-        )
-        # Set source properties to identify CUDA files
-        set_source_files_properties(${CUDA_SOURCES} PROPERTIES LANGUAGE CUDA)
-        
-        target_link_libraries(_cvc_native PRIVATE CUDA::cudart)
-        target_compile_definitions(_cvc_native PRIVATE WITH_CUDA=1)
-        set_target_properties(_cvc_native PROPERTIES
-            CUDA_SEPARABLE_COMPILATION ON
-            CUDA_RESOLVE_DEVICE_SYMBOLS ON
+        # Create object library for CUDA sources to handle device linking
+        add_library(cuda_objs OBJECT ${CUDA_SOURCES})
+        set_target_properties(cuda_objs PROPERTIES
+            CUDA_SEPARABLE_COMPILATION OFF  # Compile without separable compilation
             POSITION_INDEPENDENT_CODE ON
-            LINKER_LANGUAGE CXX
+            CUDA_RESOLVE_DEVICE_SYMBOLS OFF
         )
-        # Include CUDA directories
-        target_include_directories(_cvc_native PRIVATE 
-            ${CMAKE_CURRENT_SOURCE_DIR}
-            ${CUDAToolkit_INCLUDE_DIRS}
-        )
-        # CUDA compilation options
-        target_compile_options(_cvc_native PRIVATE
+        target_include_directories(cuda_objs PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+        target_compile_options(cuda_objs PRIVATE
             $<$<COMPILE_LANGUAGE:CUDA>:
                 --use_fast_math
                 --expt-relaxed-constexpr
                 -Xcompiler=-fPIC
             >
+        )
+        
+        # Now create the Python module
+        pybind11_add_module(_cvc_native MODULE
+            python/bindings/cvc_bindings.cpp
+            ${CVC_SOURCES}
+            $<TARGET_OBJECTS:cuda_objs>
+        )
+        
+        target_link_libraries(_cvc_native PRIVATE CUDA::cudart)
+        target_compile_definitions(_cvc_native PRIVATE WITH_CUDA=1)
+        set_target_properties(_cvc_native PROPERTIES
+            POSITION_INDEPENDENT_CODE ON
+        )
+        target_include_directories(_cvc_native PRIVATE 
+            ${CMAKE_CURRENT_SOURCE_DIR}
+            ${CUDAToolkit_INCLUDE_DIRS}
         )
     else()
         pybind11_add_module(_cvc_native MODULE
