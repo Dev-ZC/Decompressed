@@ -132,11 +132,11 @@ def load_cvc(path: str, device="cpu", framework="torch", backend="auto"):
                     
             elif use_backend == "cuda":
                 # CUDA native kernels (fastest, NVIDIA only)
-                # Convert payload to numpy array
+                # Convert payload to numpy array (copy to make writable)
                 if compression == "fp16":
-                    src_data = np.frombuffer(payload, dtype=np.float16)
+                    src_data = np.frombuffer(payload, dtype=np.float16).copy()
                 else:  # int8
-                    src_data = np.frombuffer(payload, dtype=np.uint8)
+                    src_data = np.frombuffer(payload, dtype=np.uint8).copy()
                 
                 # Upload to GPU and decompress
                 if framework == "torch":
@@ -187,11 +187,11 @@ def load_cvc(path: str, device="cpu", framework="torch", backend="auto"):
                     
             elif use_backend == "triton":
                 # Triton GPU kernels
-                # Convert payload to numpy array
+                # Convert payload to numpy array (copy to make writable)
                 if compression == "fp16":
-                    src_data = np.frombuffer(payload, dtype=np.float16)
+                    src_data = np.frombuffer(payload, dtype=np.float16).copy()
                 else:  # int8
-                    src_data = np.frombuffer(payload, dtype=np.uint8)
+                    src_data = np.frombuffer(payload, dtype=np.uint8).copy()
                 
                 # Upload to GPU based on framework
                 if framework == "torch":
