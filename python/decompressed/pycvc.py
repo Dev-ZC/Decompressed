@@ -201,13 +201,15 @@ def load_cvc(path: str, device="cpu", framework="torch", backend="auto"):
                     
                     # Launch Triton kernel
                     n_elements = rows * dim
-                    grid = lambda meta: (triton.cdiv(n_elements, 1024),)
+                    BLOCK_SIZE = 1024
+                    grid = lambda meta: (triton.cdiv(n_elements, BLOCK_SIZE),)
                     
                     if compression == "fp16":
                         decompress_fp16_kernel[grid](
                             src_gpu.data_ptr(), 
                             dst_slice.data_ptr(),
-                            n_elements
+                            n_elements,
+                            BLOCK_SIZE
                         )
                     else:  # int8
                         decompress_int8_kernel[grid](
@@ -215,7 +217,8 @@ def load_cvc(path: str, device="cpu", framework="torch", backend="auto"):
                             dst_slice.data_ptr(),
                             chunk["min"],
                             chunk["scale"],
-                            n_elements
+                            n_elements,
+                            BLOCK_SIZE
                         )
                     torch.cuda.synchronize()
                     
@@ -226,13 +229,15 @@ def load_cvc(path: str, device="cpu", framework="torch", backend="auto"):
                     
                     # Launch Triton kernel
                     n_elements = rows * dim
-                    grid = lambda meta: (triton.cdiv(n_elements, 1024),)
+                    BLOCK_SIZE = 1024
+                    grid = lambda meta: (triton.cdiv(n_elements, BLOCK_SIZE),)
                     
                     if compression == "fp16":
                         decompress_fp16_kernel[grid](
                             src_gpu.data.ptr,
                             dst_slice.data.ptr,
-                            n_elements
+                            n_elements,
+                            BLOCK_SIZE
                         )
                     else:  # int8
                         decompress_int8_kernel[grid](
@@ -240,7 +245,8 @@ def load_cvc(path: str, device="cpu", framework="torch", backend="auto"):
                             dst_slice.data.ptr,
                             chunk["min"],
                             chunk["scale"],
-                            n_elements
+                            n_elements,
+                            BLOCK_SIZE
                         )
                     cp.cuda.Device(0).synchronize()
                     
