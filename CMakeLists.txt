@@ -131,7 +131,10 @@ if(BUILD_PYTHON_BINDINGS)
             POSITION_INDEPENDENT_CODE ON
             CUDA_RESOLVE_DEVICE_SYMBOLS OFF
         )
-        target_include_directories(cuda_objs PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+        target_include_directories(cuda_objs PRIVATE 
+            ${CMAKE_CURRENT_SOURCE_DIR}
+            ${CUDAToolkit_INCLUDE_DIRS}
+        )
         target_compile_options(cuda_objs PRIVATE
             $<$<COMPILE_LANGUAGE:CUDA>:
                 --use_fast_math
@@ -140,10 +143,17 @@ if(BUILD_PYTHON_BINDINGS)
             >
         )
         
-        # Now create the Python module
+        # Create CPU object library
+        add_library(cpu_objs OBJECT ${CVC_SOURCES})
+        set_target_properties(cpu_objs PROPERTIES
+            POSITION_INDEPENDENT_CODE ON
+        )
+        target_include_directories(cpu_objs PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+        
+        # Now create the Python module with both CPU and CUDA objects
         pybind11_add_module(_cvc_native MODULE
             python/bindings/cvc_bindings.cpp
-            ${CVC_SOURCES}
+            $<TARGET_OBJECTS:cpu_objs>
             $<TARGET_OBJECTS:cuda_objs>
         )
         
