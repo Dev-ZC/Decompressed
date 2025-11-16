@@ -121,7 +121,18 @@ if(BUILD_PYTHON_BINDINGS)
         python/bindings/cvc_bindings.cpp
     )
     
-    target_link_libraries(_cvc_native PRIVATE cvc)
+    # Force inclusion of all symbols from static library
+    if(UNIX AND NOT APPLE)
+        target_link_libraries(_cvc_native PRIVATE 
+            -Wl,--whole-archive cvc -Wl,--no-whole-archive
+        )
+    elseif(APPLE)
+        target_link_libraries(_cvc_native PRIVATE 
+            -Wl,-force_load cvc
+        )
+    else()
+        target_link_libraries(_cvc_native PRIVATE cvc)
+    endif()
     
     if(CUDA_ACTUALLY_AVAILABLE)
         target_link_libraries(_cvc_native PRIVATE CUDA::cudart)
