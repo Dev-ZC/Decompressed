@@ -1,0 +1,160 @@
+cmake_minimum_required(VERSION 3.18)
+project(Decompressed LANGUAGES CXX)
+
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+
+# Options
+option(BUILD_PYTHON_BINDINGS "Build Python bindings" ON)
+option(BUILD_TESTS "Build tests" OFF)
+
+# Auto-detect CUDA availability (disable on macOS by default)
+if(APPLE)
+    option(BUILD_CUDA "Build CUDA kernels" OFF)
+else()
+    option(BUILD_CUDA "Build CUDA kernels" ON)
+endif()
+
+# Find packages
+if(BUILD_CUDA)
+    find_package(CUDAToolkit REQUIRED)
+    enable_language(CUDA)
+    set(CMAKE_CUDA_STANDARD 17)
+    set(CMAKE_CUDA_STANDARD_REQUIRED ON)
+    set(CMAKE_CUDA_ARCHITECTURES "70;75;80;86;89;90" CACHE STRING "CUDA architectures")
+endif()
+
+if(BUILD_PYTHON_BINDINGS)
+    find_package(Python3 COMPONENTS Interpreter Development REQUIRED)
+    find_package(pybind11 CONFIG)
+    if(NOT pybind11_FOUND)
+        # Fall back to Python-installed pybind11
+        execute_process(
+            COMMAND ${Python3_EXECUTABLE} -c "import pybind11; print(pybind11.get_cmake_dir())"
+            OUTPUT_VARIABLE pybind11_DIR
+            OUTPUT_STRIP_TRAILING_WHITESPACE
+        )
+        find_package(pybind11 REQUIRED)
+    endif()
+endif()
+
+# Source files
+set(CVC_SOURCES
+    cvc/cpu/cvc.cpp
+)
+
+set(CVC_HEADERS
+    cvc/cpu/cvc.h
+)
+
+if(BUILD_CUDA)
+    set(CUDA_SOURCES
+        cvc/cuda/decompress_fp16.cu
+        cvc/cuda/decompress_int8.cu
+    )
+endif()
+
+# CPU-only library
+add_library(cvc_cpu STATIC ${CVC_SOURCES} ${CVC_HEADERS})
+target_include_directories(cvc_cpu PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
+target_compile_options(cvc_cpu PRIVATE
+    $<$<CXX_COMPILER_ID:GNU,Clang,AppleClang>:-O3 -march=native -Wall -Wextra>
+    $<$<CXX_COMPILER_ID:MSVC>:/O2 /W4>
+)
+
+# CUDA library
+if(BUILD_CUDA)
+    add_library(cvc_cuda STATIC ${CUDA_SOURCES} ${CVC_HEADERS})
+    target_include_directories(cvc_cuda PUBLIC 
+        ${CMAKE_CURRENT_SOURCE_DIR}
+        ${CUDAToolkit_INCLUDE_DIRS}
+    )
+    target_link_libraries(cvc_cuda PUBLIC CUDA::cudart)
+    
+    # CUDA compilation flags
+    set_target_properties(cvc_cuda PROPERTIES
+        CUDA_SEPARABLE_COMPILATION ON
+        CUDA_RESOLVE_DEVICE_SYMBOLS ON
+    )
+    
+    target_compile_options(cvc_cuda PRIVATE
+        $<$<COMPILE_LANGUAGE:CUDA>:
+            --use_fast_math
+            --expt-relaxed-constexpr
+            -O3
+        >
+    )
+    
+    # Combined library
+    add_library(cvc STATIC ${CVC_SOURCES} ${CUDA_SOURCES} ${CVC_HEADERS})
+    target_include_directories(cvc PUBLIC 
+        ${CMAKE_CURRENT_SOURCE_DIR}
+        ${CUDAToolkit_INCLUDE_DIRS}
+    )
+    target_link_libraries(cvc PUBLIC CUDA::cudart)
+    set_target_properties(cvc PROPERTIES
+        CUDA_SEPARABLE_COMPILATION ON
+        CUDA_RESOLVE_DEVICE_SYMBOLS ON
+    )
+else()
+    add_library(cvc ALIAS cvc_cpu)
+endif()
+
+# Python bindings
+if(BUILD_PYTHON_BINDINGS)
+    pybind11_add_module(_cvc_native MODULE
+        python/bindings/cvc_bindings.cpp
+    )
+    
+    target_link_libraries(_cvc_native PRIVATE cvc)
+    
+    if(BUILD_CUDA)
+        target_link_libraries(_cvc_native PRIVATE CUDA::cudart)
+        target_compile_definitions(_cvc_native PRIVATE WITH_CUDA=1)
+    endif()
+    
+    # Install to python package directory
+    # For scikit-build-core: install to the package location
+    install(TARGETS _cvc_native 
+        LIBRARY DESTINATION decompressed
+        RUNTIME DESTINATION decompressed
+    )
+endif()
+
+# Tests
+if(BUILD_TESTS)
+    enable_testing()
+    add_subdirectory(tests)
+endif()
+
+# Installation
+install(TARGETS cvc_cpu
+    ARCHIVE DESTINATION lib
+    LIBRARY DESTINATION lib
+)
+
+if(BUILD_CUDA)
+    install(TARGETS cvc_cuda cvc
+        ARCHIVE DESTINATION lib
+        LIBRARY DESTINATION lib
+    )
+endif()
+
+install(FILES ${CVC_HEADERS} DESTINATION include/cvc/cpu)
+
+# Print configuration summary
+message(STATUS "")
+message(STATUS "=== Decompressed Build Configuration ===")
+message(STATUS "Build type: ${CMAKE_BUILD_TYPE}")
+message(STATUS "C++ Standard: ${CMAKE_CXX_STANDARD}")
+message(STATUS "CUDA Support: ${BUILD_CUDA}")
+if(BUILD_CUDA)
+    message(STATUS "CUDA Architectures: ${CMAKE_CUDA_ARCHITECTURES}")
+    message(STATUS "CUDA Toolkit: ${CUDAToolkit_VERSION}")
+endif()
+message(STATUS "Python Bindings: ${BUILD_PYTHON_BINDINGS}")
+if(BUILD_PYTHON_BINDINGS)
+    message(STATUS "Python: ${Python3_EXECUTABLE} (${Python3_VERSION})")
+endif()
+message(STATUS "========================================")
+message(STATUS "")

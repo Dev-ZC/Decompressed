@@ -1,0 +1,20 @@
+include LICENSE
+include README.md
+include format.md
+include BUILD.md
+include GPU_SUPPORT.md
+include ARCHITECTURE.md
+include CMakeLists.txt
+include pyproject.toml
+
+# Include C++ source files for building
+recursive-include cvc *.h *.cpp *.cu *.py
+
+# Include Python source and bindings
+recursive-include python *.py *.cpp
+
+# Exclude build artifacts
+exclude build/*
+exclude dist/*
+exclude *.egg-info/*
+exclude test_*.cvc

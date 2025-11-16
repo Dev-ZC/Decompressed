@@ -1,4 +1,4 @@
-#include "cvc.h"
+#include "../cpu/cvc.h"
 #include <cuda_runtime.h>
 
 __global__ void decompress_fp16_kernel(const uint16_t* src, float* dst, size_t n) {
