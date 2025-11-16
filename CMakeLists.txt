@@ -66,6 +66,9 @@ endif()
 # CPU-only library
 add_library(cvc_cpu STATIC ${CVC_SOURCES} ${CVC_HEADERS})
 target_include_directories(cvc_cpu PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
+set_target_properties(cvc_cpu PROPERTIES
+    POSITION_INDEPENDENT_CODE ON
+)
 target_compile_options(cvc_cpu PRIVATE
     $<$<CXX_COMPILER_ID:GNU,Clang,AppleClang>:-O3 -march=native -Wall -Wextra>
     $<$<CXX_COMPILER_ID:MSVC>:/O2 /W4>
@@ -84,6 +87,7 @@ if(BUILD_CUDA)
     set_target_properties(cvc_cuda PROPERTIES
         CUDA_SEPARABLE_COMPILATION ON
         CUDA_RESOLVE_DEVICE_SYMBOLS ON
+        POSITION_INDEPENDENT_CODE ON
     )
     
     target_compile_options(cvc_cuda PRIVATE
@@ -91,6 +95,7 @@ if(BUILD_CUDA)
             --use_fast_math
             --expt-relaxed-constexpr
             -O3
+            -Xcompiler=-fPIC
         >
     )
     
@@ -104,6 +109,7 @@ if(BUILD_CUDA)
     set_target_properties(cvc PROPERTIES
         CUDA_SEPARABLE_COMPILATION ON
         CUDA_RESOLVE_DEVICE_SYMBOLS ON
+        POSITION_INDEPENDENT_CODE ON
     )
 else()
     add_library(cvc ALIAS cvc_cpu)
