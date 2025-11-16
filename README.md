@@ -16,31 +16,43 @@ An open-source GPU-native decompression framework for vector embeddings, optimiz
 
 ### Installation
 
-**Basic (Works everywhere, auto-detects CUDA if available):**
+**🎯 Smart Install (Detects your system automatically):**
 ```bash
-pip install decompressed
-# or: pip install git+https://github.com/Dev-ZC/Decompressed.git
-
-# Automatically builds:
-# - C++ CPU extensions (if CMake available)
-# - CUDA GPU extensions (if CUDA Toolkit detected)
-# - Gracefully falls back to pure Python if neither available
+curl -sSL https://raw.githubusercontent.com/Dev-ZC/Decompressed/main/install.py | python3
+# Detects GPU (NVIDIA/AMD/Intel) and installs optimal version
 ```
 
-**With GPU Support for AMD/Intel (Triton):**
+**Quick Install (Recommended):**
 ```bash
 pip install decompressed[gpu]
-# Installs: numpy + torch + triton for GPU-agnostic support
+# Installs everything: numpy + torch + triton
+# Works on: NVIDIA GPUs (CUDA), AMD GPUs (ROCm), Intel GPUs, and CPU
 ```
 
-**Alternative GPU (NVIDIA-only with CuPy):**
+**Manual Detection:**
 ```bash
+# Check what you have:
+python -c "import torch; print('GPU:', torch.cuda.is_available())"
+
+# If GPU available → install with GPU support:
+pip install decompressed[gpu]
+
+# If no GPU or just need CPU:
+pip install decompressed
+```
+
+**Advanced Options:**
+```bash
+# Minimal (CPU-only, auto-builds CUDA if toolkit found)
+pip install decompressed
+
+# With PyTorch + Triton (GPU-agnostic)
+pip install decompressed[gpu]
+
+# With CuPy + Triton (NVIDIA-only alternative)
 pip install decompressed[gpu-cupy]
-# Installs: numpy + cupy + triton
-```
 
-**Development:**
-```bash
+# Development
 git clone https://github.com/Dev-ZC/Decompressed.git
 cd Decompressed
 pip install -e ".[dev,gpu]"
@@ -57,17 +69,22 @@ pip install -e ".[dev,gpu]"
 
 ### What Gets Built Automatically
 
-| Environment | What Happens | Performance |
-|-------------|--------------|-------------|
-| **Colab (T4/A100)** | ✅ C++ CPU + ✅ CUDA native | 🚀 20+ GB/s |
-| **Colab + `[gpu]`** | ✅ C++ CPU + ✅ CUDA native + ✅ Triton | 🚀 20+ GB/s |
-| **Linux + NVIDIA GPU** | ✅ C++ CPU + ✅ CUDA native (if nvcc found) | 🚀 20+ GB/s |
-| **Linux + AMD GPU + `[gpu]`** | ✅ C++ CPU + ✅ Triton (via ROCm) | ⚡ 3-5 GB/s |
-| **macOS (Apple Silicon)** | ✅ C++ CPU only | ⚡ 1-2 GB/s |
-| **Windows + NVIDIA** | ✅ C++ CPU + ✅ CUDA native (if CUDA SDK found) | 🚀 20+ GB/s |
-| **No compilers** | ✅ Pure Python fallback | 🐌 0.5 GB/s |
+| Install Command | Environment | What's Built | Performance |
+|----------------|-------------|--------------|-------------|
+| `[gpu]` | **Colab (T4/A100)** | C++ + CUDA + Triton | 🚀 20+ GB/s |
+| `[gpu]` | **Linux + NVIDIA** | C++ + CUDA + Triton | 🚀 20+ GB/s |
+| `[gpu]` | **Linux + AMD** | C++ + Triton (ROCm) | ⚡ 3-5 GB/s |
+| `[gpu]` | **Windows + NVIDIA** | C++ + CUDA + Triton | 🚀 20+ GB/s |
+| base | **Linux + NVIDIA** | C++ + CUDA (if nvcc) | 🚀 20+ GB/s |
+| base | **macOS (Apple)** | C++ CPU only | ⚡ 1-2 GB/s |
+| base | **No compilers** | Pure Python | 🐌 0.5 GB/s |
 
-**100% Turnkey** - One `pip install` command works everywhere! See [INSTALL.md](INSTALL.md) for details.
+**✨ Smart Detection:**
+- `pip install decompressed` → Builds CUDA if toolkit found, CPU otherwise
+- `pip install decompressed[gpu]` → Adds Triton for AMD/Intel GPU support
+- Both work everywhere with graceful fallbacks
+
+See [INSTALL.md](INSTALL.md) for details.
 
 ### Usage
 
