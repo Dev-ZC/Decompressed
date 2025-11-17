@@ -24,11 +24,14 @@ if(BUILD_CUDA)
         enable_language(CUDA)
         set(CMAKE_CUDA_STANDARD 17)
         set(CMAKE_CUDA_STANDARD_REQUIRED ON)
-        # Use native architecture for best performance, fallback to common architectures
-        if(CMAKE_CUDA_COMPILER_VERSION VERSION_GREATER_EQUAL "11.0")
-            set(CMAKE_CUDA_ARCHITECTURES "native" CACHE STRING "CUDA architectures")
-        else()
+        # Compile for multiple architectures for better compatibility
+        # Include common architectures: 70 (V100), 75 (T4), 80 (A100), 86 (RTX 30xx), 89 (RTX 40xx), 90 (H100)
+        if(CMAKE_CUDA_COMPILER_VERSION VERSION_GREATER_EQUAL "12.0")
+            set(CMAKE_CUDA_ARCHITECTURES "70;75;80;86;89;90" CACHE STRING "CUDA architectures")
+        elseif(CMAKE_CUDA_COMPILER_VERSION VERSION_GREATER_EQUAL "11.1")
             set(CMAKE_CUDA_ARCHITECTURES "70;75;80;86" CACHE STRING "CUDA architectures")
+        else()
+            set(CMAKE_CUDA_ARCHITECTURES "70;75" CACHE STRING "CUDA architectures")
         endif()
         set(CUDA_ACTUALLY_AVAILABLE ON)
         message(STATUS "✅ CUDA Toolkit found: Building with CUDA support")
@@ -127,9 +130,9 @@ if(BUILD_PYTHON_BINDINGS)
         # Create object library for CUDA sources to handle device linking
         add_library(cuda_objs OBJECT ${CUDA_SOURCES})
         set_target_properties(cuda_objs PROPERTIES
-            CUDA_SEPARABLE_COMPILATION OFF  # Compile without separable compilation
+            CUDA_SEPARABLE_COMPILATION ON  # Enable separable compilation for better compatibility
             POSITION_INDEPENDENT_CODE ON
-            CUDA_RESOLVE_DEVICE_SYMBOLS OFF
+            CUDA_RESOLVE_DEVICE_SYMBOLS ON
         )
         target_include_directories(cuda_objs PRIVATE 
             ${CMAKE_CURRENT_SOURCE_DIR}
