@@ -26,8 +26,9 @@ The focus is:
 
 - **Chunked, streaming format**
 
-  - `.cvc` format is chunked.
-  - Load datasets that do not fit into host RAM.
+  - `.cvc` format is chunked for efficient storage and streaming.
+  - **Chunked decompression API**: Load and decompress specific chunks on-demand.
+  - Load datasets that do not fit into host RAM via `load_cvc_chunked()`.
   - Per-chunk compression parameters.
 
 - **Framework-agnostic integration**
@@ -262,6 +263,160 @@ pack_cvc(vectors, output_path, compression="fp16", chunk_size=100000)
 **Returns**
 
 - `None`. Writes the `.cvc` file to `output_path`.
+
+---
+
+### `get_cvc_info`
+
+```python
+from decompressed import get_cvc_info
+
+info = get_cvc_info("embeddings.cvc")
+print(f"File contains {info['num_vectors']} vectors in {info['num_chunks']} chunks")
+```
+
+**Signature**
+
+```python
+get_cvc_info(path)
+```
+
+**Arguments**
+
+- `path`: `str` or `pathlib.Path`  
+  Path to a `.cvc` file on disk.
+
+**Returns**
+
+- `dict`: File metadata containing:
+  - `num_vectors`: Total number of vectors in the file.
+  - `dimension`: Vector dimensionality.
+  - `compression`: Default compression scheme.
+  - `chunks`: List of chunk metadata (each with `rows`, `compression`, etc.).
+  - `num_chunks`: Number of chunks.
+
+**Use Cases**
+
+- Inspect file contents before loading.
+- Determine chunk structure for implementing custom loading strategies.
+- Get file statistics without loading vectors into memory.
+
+---
+
+### `load_cvc_chunked`
+
+```python
+from decompressed import load_cvc_chunked
+
+# Iterate through all chunks
+for chunk_idx, vectors in load_cvc_chunked("embeddings.cvc", device="cpu"):
+    print(f"Processing chunk {chunk_idx}: {vectors.shape}")
+    # Process vectors chunk by chunk...
+
+# Load only specific chunks
+for chunk_idx, vectors in load_cvc_chunked(
+    "embeddings.cvc",
+    chunk_indices=[0, 2, 5],
+    device="cuda",
+):
+    print(f"Loaded chunk {chunk_idx}")
+```
+
+**Signature**
+
+```python
+load_cvc_chunked(path, chunk_indices=None, device="cpu", framework="torch", backend="auto")
+```
+
+**Arguments**
+
+- `path`: `str` or `pathlib.Path`  
+  Path to a `.cvc` file on disk.
+
+- `chunk_indices`: `list[int]` or `None`  
+  List of chunk indices to load (0-indexed), or `None` to load all chunks.  
+  Use `get_cvc_info()` to determine how many chunks exist.
+
+- `device`: `str`  
+  - `"cpu"`: decompress to CPU memory.
+  - `"cuda"`: decompress to GPU memory.
+
+- `framework`: `str`  
+  Used when `device="cuda"`:
+  - `"torch"`: returns PyTorch tensors.
+  - `"cupy"`: returns CuPy arrays.
+
+- `backend`: `str`  
+  Backend implementation to use (same options as `load_cvc`).
+
+**Yields**
+
+- `tuple[int, array]`: For each chunk:
+  - `chunk_index`: 0-indexed chunk number.
+  - `chunk_array`: Decompressed vectors for that chunk.
+
+**Use Cases**
+
+- **Streaming processing**: Process large files that don't fit in memory.
+- **Memory-efficient workflows**: Load and process one chunk at a time.
+- **Selective loading**: Load only the chunks you need.
+- **Incremental computation**: Compute embeddings or similarity scores incrementally.
+
+---
+
+### `load_cvc_range`
+
+```python
+from decompressed import load_cvc_range
+
+# Load first 3 chunks only
+vectors = load_cvc_range("embeddings.cvc", chunk_indices=[0, 1, 2], device="cpu")
+
+# Load specific non-contiguous chunks
+vectors = load_cvc_range(
+    "embeddings.cvc",
+    chunk_indices=[0, 5, 10],
+    device="cuda",
+    backend="triton",
+)
+```
+
+**Signature**
+
+```python
+load_cvc_range(path, chunk_indices, device="cpu", framework="torch", backend="auto")
+```
+
+**Arguments**
+
+- `path`: `str` or `pathlib.Path`  
+  Path to a `.cvc` file on disk.
+
+- `chunk_indices`: `list[int]`  
+  List of chunk indices to load (0-indexed).  
+  Use `get_cvc_info()` to determine how many chunks exist.
+
+- `device`: `str`  
+  - `"cpu"`: decompress to CPU memory.
+  - `"cuda"`: decompress to GPU memory.
+
+- `framework`: `str`  
+  Used when `device="cuda"`:
+  - `"torch"`: returns PyTorch tensors.
+  - `"cupy"`: returns CuPy arrays.
+
+- `backend`: `str`  
+  Backend implementation to use (same options as `load_cvc`).
+
+**Returns**
+
+- Array containing the requested chunks concatenated together.
+
+**Use Cases**
+
+- **Partial loading**: Load only a subset of vectors from a large collection.
+- **Range queries**: Load vectors in a specific index range without loading the full file.
+- **Sharded processing**: Process different chunks on different GPUs or machines.
 
 ---
 

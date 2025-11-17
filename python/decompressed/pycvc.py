@@ -93,6 +93,100 @@ def get_backend_errors():
     }
 
 
+def get_cvc_info(path):
+    """
+    Read CVC file metadata without loading vectors.
+    
+    Useful for inspecting file contents before loading, checking chunk structure,
+    or implementing custom loading strategies.
+    
+    Args:
+        path: Path to .cvc file
+        
+    Returns:
+        dict: File metadata containing:
+            - num_vectors: Total number of vectors
+            - dimension: Vector dimensionality  
+            - compression: Default compression scheme
+            - chunks: List of chunk metadata (each with rows, compression, etc.)
+            - num_chunks: Number of chunks
+    
+    Examples:
+        >>> info = get_cvc_info("embeddings.cvc")
+        >>> print(f"File contains {info['num_vectors']} vectors in {info['num_chunks']} chunks")
+        >>> print(f"Dimension: {info['dimension']}, Compression: {info['compression']}")
+    """
+    return _loader.get_info(path)
+
+
+def load_cvc_chunked(path, chunk_indices=None, device="cpu", framework="torch", backend="auto"):
+    """
+    Load and decompress specific chunks from a .cvc file as an iterator.
+    
+    This is useful for:
+    - Processing large files that don't fit in memory
+    - Streaming/iterative processing of embeddings
+    - Loading only a subset of vectors from a large collection
+    
+    Args:
+        path: Path to .cvc file
+        chunk_indices: List of chunk indices to load (0-indexed), or None to load all chunks.
+                      Use get_cvc_info() to determine how many chunks exist.
+        device: "cpu" or "cuda"
+        framework: "torch" or "cupy" (for GPU arrays)
+        backend: Backend to use - "auto", "python", "cpp", "cuda", or "triton"
+        
+    Yields:
+        tuple: (chunk_index, chunk_array) for each chunk
+            - chunk_index: 0-indexed chunk number
+            - chunk_array: Decompressed vectors for that chunk
+    
+    Examples:
+        >>> # Iterate through all chunks
+        >>> for chunk_idx, vectors in load_cvc_chunked("embeddings.cvc", device="cpu"):
+        >>>     print(f"Processing chunk {chunk_idx}: {vectors.shape}")
+        >>>     # Process this chunk...
+        
+        >>> # Load only specific chunks (e.g., chunks 0, 2, and 5)
+        >>> for chunk_idx, vectors in load_cvc_chunked("embeddings.cvc", 
+        >>>                                             chunk_indices=[0, 2, 5],
+        >>>                                             device="cuda"):
+        >>>     print(f"Loaded chunk {chunk_idx}: {vectors.shape}")
+    """
+    return _loader.load_chunks(path, chunk_indices, device, framework, backend)
+
+
+def load_cvc_range(path, chunk_indices, device="cpu", framework="torch", backend="auto"):
+    """
+    Load specific chunks from a .cvc file and concatenate them into a single array.
+    
+    This is useful for loading a specific subset of vectors from a large file
+    without loading the entire dataset.
+    
+    Args:
+        path: Path to .cvc file
+        chunk_indices: List of chunk indices to load (0-indexed).
+                      Use get_cvc_info() to determine how many chunks exist.
+        device: "cpu" or "cuda"
+        framework: "torch" or "cupy" (for GPU arrays)
+        backend: Backend to use - "auto", "python", "cpp", "cuda", or "triton"
+        
+    Returns:
+        Array containing the requested chunks concatenated together
+    
+    Examples:
+        >>> # Load first 3 chunks only
+        >>> vectors = load_cvc_range("embeddings.cvc", chunk_indices=[0, 1, 2], device="cpu")
+        
+        >>> # Load specific non-contiguous chunks
+        >>> vectors = load_cvc_range("embeddings.cvc", 
+        >>>                          chunk_indices=[0, 5, 10],
+        >>>                          device="cuda",
+        >>>                          backend="triton")
+    """
+    return _loader.load_range(path, chunk_indices, device, framework, backend)
+
+
 # Legacy module-level constants for compatibility
 HEADER_MAGIC = b"CVCF"
 

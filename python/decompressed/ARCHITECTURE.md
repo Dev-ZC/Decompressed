@@ -23,19 +23,29 @@ decompressed/
 
 ## Module Responsibilities
 
-### `pycvc.py` (80 lines)
+### `pycvc.py` (~200 lines)
 - **Purpose**: High-level user-facing API
-- **Exports**: `load_cvc()`, `pack_cvc()`, `get_available_backends()`
+- **Exports**: 
+  - `load_cvc()` - Load entire file
+  - `pack_cvc()` - Create .cvc files
+  - `get_cvc_info()` - Read file metadata
+  - `load_cvc_chunked()` - Iterate through chunks
+  - `load_cvc_range()` - Load specific chunks
+  - `get_available_backends()` - Backend introspection
+  - `get_backend_errors()` - Backend diagnostics
 - **Design**: Thin wrapper around `loader` and `packer` modules
 
-### `loader.py` (~150 lines)
+### `loader.py` (~320 lines)
 - **Purpose**: Manages CVC file loading and backend orchestration
 - **Key Class**: `CVCLoader`
 - **Responsibilities**:
-  - Header parsing
+  - Header parsing and metadata extraction
   - Output array allocation
   - Backend selection and validation
-  - Chunk iteration and decompression dispatch
+  - Full-file loading (`load()`)
+  - Chunked iteration (`load_chunks()`)
+  - Range-based loading (`load_range()`)
+  - Metadata reading (`get_info()`)
 
 ### `packer.py` (~70 lines)
 - **Purpose**: Handles CVC file writing
@@ -112,6 +122,23 @@ print(f"Available: {backends}")
 vectors = load_cvc("embeddings.cvc", device="cuda", backend="triton")
 ```
 
+### Chunked Loading (Memory-Efficient)
+```python
+from decompressed import get_cvc_info, load_cvc_chunked, load_cvc_range
+
+# Inspect file without loading
+info = get_cvc_info("embeddings.cvc")
+print(f"File has {info['num_chunks']} chunks")
+
+# Process chunks one at a time (memory-efficient)
+for chunk_idx, vectors in load_cvc_chunked("embeddings.cvc", device="cpu"):
+    # Process this chunk
+    process_vectors(vectors)
+
+# Load specific chunks only
+vectors = load_cvc_range("embeddings.cvc", chunk_indices=[0, 1, 2], device="cuda")
+```
+
 ## Testing
 
 Each module can be tested independently:
@@ -124,5 +151,7 @@ Each module can be tested independently:
 Easy to add:
 - **New backends**: Implement `BackendInterface`
 - **New compression schemes**: Add to `compress.py` and backends
-- **Streaming support**: Extend `CVCLoader` with iterator interface
+- ~~**Streaming support**: Extend `CVCLoader` with iterator interface~~ ✅ **Implemented** via `load_cvc_chunked()`
 - **Async loading**: Add async methods to loader
+- **Remote file support**: Add streaming from S3, HTTP, etc.
+- **Chunk-level caching**: Cache frequently accessed chunks
