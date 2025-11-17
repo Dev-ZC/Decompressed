@@ -1,31 +1,95 @@
 """Utility functions for error handling and compatibility checks."""
 
 import warnings
+import subprocess
+import sys
+
+
+def check_cuda_pytorch_compatibility():
+    """
+    Check if PyTorch CUDA version matches system CUDA version.
+    
+    Returns:
+        tuple: (is_compatible, system_cuda_version, pytorch_cuda_version, fix_command)
+    """
+    try:
+        import torch
+        
+        if not torch.cuda.is_available():
+            return (True, None, None, None)  # No CUDA, no problem
+        
+        pytorch_cuda = torch.version.cuda
+        
+        # Try to get system CUDA version
+        try:
+            result = subprocess.run(['nvcc', '--version'], capture_output=True, text=True, timeout=2)
+            if result.returncode == 0:
+                for line in result.stdout.split('\n'):
+                    if 'release' in line.lower():
+                        system_cuda = line.split('release')[1].split(',')[0].strip()
+                        
+                        # Map to PyTorch wheel versions
+                        major_minor = '.'.join(system_cuda.split('.')[:2])
+                        cuda_wheel_map = {
+                            '12.6': ('cu124', False),
+                            '12.5': ('cu124', False),
+                            '12.4': ('cu124', True),
+                            '12.3': ('cu121', False),
+                            '12.2': ('cu121', False),
+                            '12.1': ('cu121', True),
+                            '12.0': ('cu118', False),
+                            '11.8': ('cu118', True),
+                        }
+                        
+                        wheel_version, exact_match = cuda_wheel_map.get(major_minor, ('cu121', False))
+                        pytorch_major = pytorch_cuda.split('.')[0] if pytorch_cuda else ''
+                        system_major = major_minor.split('.')[0]
+                        
+                        is_compatible = pytorch_major == system_major
+                        fix_cmd = f"pip install torch --index-url https://download.pytorch.org/whl/{wheel_version}"
+                        
+                        return (is_compatible, system_cuda, pytorch_cuda, fix_cmd)
+        except (FileNotFoundError, subprocess.TimeoutExpired):
+            pass  # nvcc not available, can't check
+        
+        return (True, None, pytorch_cuda, None)  # Can't verify, assume OK
+        
+    except ImportError:
+        return (True, None, None, None)
+
+
+def get_cuda_mismatch_error_message(backend_name="GPU"):
+    """Generate helpful error message for CUDA/PyTorch version mismatches."""
+    is_compat, sys_cuda, torch_cuda, fix_cmd = check_cuda_pytorch_compatibility()
+    
+    return (
+        f"\n\n{'='*70}\n"
+        f"⚠️  {backend_name.upper()} COMPATIBILITY ERROR\n"
+        f"{'='*70}\n"
+        f"Your PyTorch CUDA version doesn't match your system CUDA.\n"
+        f"This causes PTX compilation errors in GPU kernels.\n\n"
+        f"System CUDA version: {sys_cuda or 'Unknown (nvcc not found)'}\n"
+        f"PyTorch CUDA version: {torch_cuda}\n\n"
+        f"{'─'*70}\n"
+        f"🔧 HOW TO FIX:\n"
+        f"{'─'*70}\n"
+        f"1. Install matching PyTorch (RECOMMENDED):\n"
+        f"   {fix_cmd if fix_cmd else 'Check: nvcc --version, then install matching torch'}\n\n"
+        f"2. Alternative backends:\n"
+        f"   • For GPU: load_cvc(..., backend='auto')  # Will try fallbacks\n"
+        f"   • For CPU: load_cvc(..., device='cpu')    # Still fast!\n\n"
+        f"3. Quick fix commands by CUDA version:\n"
+        f"   CUDA 11.8: pip install torch --index-url https://download.pytorch.org/whl/cu118\n"
+        f"   CUDA 12.1: pip install torch --index-url https://download.pytorch.org/whl/cu121\n"
+        f"   CUDA 12.4: pip install torch --index-url https://download.pytorch.org/whl/cu124\n\n"
+        f"After installing, restart your Python runtime/kernel.\n"
+        f"{'='*70}\n"
+    )
 
 
 def get_triton_ptx_error_message(torch_version, device_capability):
     """Generate helpful error message for Triton PTX compilation errors."""
-    return (
-        f"\n\n{'='*70}\n"
-        f"⚠️  TRITON COMPATIBILITY ERROR\n"
-        f"{'='*70}\n"
-        f"Triton cannot compile kernels because your PyTorch CUDA version\n"
-        f"doesn't match your system CUDA driver.\n\n"
-        f"Your PyTorch CUDA version: {torch_version}\n"
-        f"System CUDA capability: {device_capability}\n\n"
-        f"FIX OPTIONS:\n"
-        f"1. Install matching PyTorch (recommended):\n"
-        f"   # Check system CUDA: nvcc --version\n"
-        f"   # For CUDA 11.8:\n"
-        f"   pip install torch --index-url https://download.pytorch.org/whl/cu118\n"
-        f"   # For CUDA 12.1:\n"
-        f"   pip install torch --index-url https://download.pytorch.org/whl/cu121\n\n"
-        f"2. Use CUDA native backend (if available):\n"
-        f"   load_cvc(..., backend='cuda')  # Faster anyway!\n\n"
-        f"3. Use CPU backend:\n"
-        f"   load_cvc(..., device='cpu')\n"
-        f"{'='*70}\n"
-    )
+    return get_cuda_mismatch_error_message("Triton")
 
 
 def warn_triton_fallback(help_msg):

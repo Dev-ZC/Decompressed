@@ -3,9 +3,10 @@
 import json
 import numpy as np
 from pathlib import Path
+import warnings
 
 from .backends import PythonBackend, CPPBackend, CUDABackend, TritonBackend
-from .utils import validate_backend_availability, select_backend
+from .utils import validate_backend_availability, select_backend, check_cuda_pytorch_compatibility
 
 HEADER_MAGIC = b"CVCF"
 
@@ -19,6 +20,30 @@ class CVCLoader:
         self.cpp_backend = CPPBackend()
         self.cuda_backend = CUDABackend()
         self.triton_backend = TritonBackend()
+        
+        # Check for CUDA/PyTorch compatibility and warn user
+        self._check_gpu_compatibility()
+    
+    def _check_gpu_compatibility(self):
+        """Check and warn about CUDA/PyTorch compatibility issues."""
+        is_compat, sys_cuda, torch_cuda, fix_cmd = check_cuda_pytorch_compatibility()
+        
+        if not is_compat and sys_cuda and torch_cuda:
+            # Only warn if we have both versions and they don't match
+            if (self.cuda_backend.is_available() or self.triton_backend.is_available()):
+                warnings.warn(
+                    f"\n{'='*70}\n"
+                    f"⚠️  CUDA/PYTORCH VERSION MISMATCH DETECTED\n"
+                    f"{'='*70}\n"
+                    f"System CUDA: {sys_cuda}\n"
+                    f"PyTorch CUDA: {torch_cuda}\n\n"
+                    f"GPU backends may fail with PTX errors. To fix:\n"
+                    f"  {fix_cmd}\n"
+                    f"Then restart your Python runtime.\n"
+                    f"{'='*70}\n",
+                    RuntimeWarning,
+                    stacklevel=2
+                )
     
     def get_backend_availability(self):
         """Get dict of available backends."""

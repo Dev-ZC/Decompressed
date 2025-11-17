@@ -2,7 +2,7 @@
 
 import numpy as np
 from .base import BackendInterface
-from ..utils import get_triton_ptx_error_message, warn_triton_fallback
+from ..utils import get_cuda_mismatch_error_message, get_triton_ptx_error_message, warn_triton_fallback
 
 
 class CUDABackend(BackendInterface):
@@ -23,56 +23,70 @@ class CUDABackend(BackendInterface):
     
     def decompress_chunk(self, payload, rows, dim, compression, chunk_meta, arr, offset, framework="torch"):
         """Decompress using CUDA native kernels."""
-        # Convert payload to numpy array
-        if compression == "fp16":
-            src_data = np.frombuffer(payload, dtype=np.float16).copy()
-        else:  # int8
-            src_data = np.frombuffer(payload, dtype=np.uint8).copy()
-        
-        # Upload to GPU and decompress based on framework
-        if framework == "torch":
-            import torch
-            src_gpu = torch.from_numpy(src_data).cuda()
-            dst_slice = arr[offset:offset+rows].flatten()
-            n_elements = rows * dim
-            
+        try:
+            # Convert payload to numpy array
             if compression == "fp16":
-                self.decompress_fp16(
-                    src_gpu.data_ptr(),
-                    dst_slice.data_ptr(),
-                    n_elements
-                )
+                src_data = np.frombuffer(payload, dtype=np.float16).copy()
             else:  # int8
-                self.decompress_int8(
-                    src_gpu.data_ptr(),
-                    dst_slice.data_ptr(),
-                    chunk_meta["min"],
-                    chunk_meta["scale"],
-                    n_elements
-                )
-            torch.cuda.synchronize()
+                src_data = np.frombuffer(payload, dtype=np.uint8).copy()
             
-        elif framework == "cupy":
-            import cupy as cp
-            src_gpu = cp.asarray(src_data)
-            dst_slice = arr[offset:offset+rows].flatten()
-            n_elements = rows * dim
-            
-            if compression == "fp16":
-                self.decompress_fp16(
-                    src_gpu.data.ptr,
-                    dst_slice.data.ptr,
-                    n_elements
-                )
-            else:  # int8
-                self.decompress_int8(
-                    src_gpu.data.ptr,
-                    dst_slice.data.ptr,
-                    chunk_meta["min"],
-                    chunk_meta["scale"],
-                    n_elements
-                )
-            cp.cuda.Device(0).synchronize()
+            # Upload to GPU and decompress based on framework
+            if framework == "torch":
+                import torch
+                src_gpu = torch.from_numpy(src_data).cuda()
+                dst_slice = arr[offset:offset+rows].flatten()
+                n_elements = rows * dim
+                
+                if compression == "fp16":
+                    self.decompress_fp16(
+                        src_gpu.data_ptr(),
+                        dst_slice.data_ptr(),
+                        n_elements
+                    )
+                else:  # int8
+                    self.decompress_int8(
+                        src_gpu.data_ptr(),
+                        dst_slice.data_ptr(),
+                        chunk_meta["min"],
+                        chunk_meta["scale"],
+                        n_elements
+                    )
+                torch.cuda.synchronize()
+                
+            elif framework == "cupy":
+                import cupy as cp
+                src_gpu = cp.asarray(src_data)
+                dst_slice = arr[offset:offset+rows].flatten()
+                n_elements = rows * dim
+                
+                if compression == "fp16":
+                    self.decompress_fp16(
+                        src_gpu.data.ptr,
+                        dst_slice.data.ptr,
+                        n_elements
+                    )
+                else:  # int8
+                    self.decompress_int8(
+                        src_gpu.data.ptr,
+                        dst_slice.data.ptr,
+                        chunk_meta["min"],
+                        chunk_meta["scale"],
+                        n_elements
+                    )
+                cp.cuda.Device(0).synchronize()
+                
+        except RuntimeError as e:
+            error_msg = str(e)
+            # Check for PTX/CUDA compilation errors
+            if any(keyword in error_msg.lower() for keyword in ['ptx', 'cuda error', 'unsupported toolchain']):
+                help_msg = get_cuda_mismatch_error_message("CUDA Native")
+                # Print help message but don't suppress original error
+                print(help_msg, file=__import__('sys').stderr)
+                # Re-raise original error with full traceback
+                raise
+            else:
+                # Some other CUDA error
+                raise
     
     def is_available(self):
         """Check if CUDA native extensions are built."""
@@ -183,6 +197,7 @@ class TritonBackend(BackendInterface):
                          arr, offset, framework, cuda_fallback):
         """Handle Triton PTX compilation errors with helpful messages and fallback."""
         import torch
+        import sys
         
         help_msg = get_triton_ptx_error_message(
             torch.version.cuda,
@@ -196,10 +211,12 @@ class TritonBackend(BackendInterface):
                 payload, rows, dim, compression, chunk_meta, arr, offset, framework
             )
         else:
-            # No fallback available, show full error
-            raise RuntimeError(
-                f"Triton backend failed with PTX error.{help_msg}\n\nOriginal error: {str(error)}"
-            )
+            # No fallback available - print help and re-raise original error
+            print(help_msg, file=sys.stderr)
+            print(f"\n{'='*70}", file=sys.stderr)
+            print(f"ORIGINAL ERROR (full traceback below):", file=sys.stderr)
+            print(f"{'='*70}\n", file=sys.stderr)
+            raise
     
     def is_available(self):
         """Check if Triton is installed and importable."""
