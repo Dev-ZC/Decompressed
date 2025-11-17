@@ -8,12 +8,9 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 option(BUILD_PYTHON_BINDINGS "Build Python bindings" ON)
 option(BUILD_TESTS "Build tests" OFF)
 
-# Auto-detect CUDA availability (disable on macOS by default)
-if(APPLE)
-    option(BUILD_CUDA "Build CUDA kernels" OFF)
-else()
-    option(BUILD_CUDA "Build CUDA kernels" ON)
-endif()
+# CUDA build is opt-in (users must explicitly enable with -DBUILD_CUDA=ON)
+# Default: CPU-only build for maximum compatibility
+option(BUILD_CUDA "Build CUDA kernels" OFF)
 
 # Find packages
 set(CUDA_ACTUALLY_AVAILABLE OFF)

@@ -16,80 +16,77 @@ An open-source GPU-native decompression framework for vector embeddings, optimiz
 
 ### Installation
 
-**🎯 Smart Install (Detects your system automatically):**
+Choose the installation that matches your hardware:
+
+**🖥️ CPU Only (Default):**
 ```bash
-curl -sSL https://raw.githubusercontent.com/Dev-ZC/Decompressed/main/install.py | python3
-# Detects GPU (NVIDIA/AMD/Intel) and installs optimal version
-```
-
-**Quick Install (Recommended):**
-```bash
-# From PyPI (when published)
-pip install decompressed[gpu]
-
-# From GitHub (for now)
-pip install 'decompressed[gpu] @ git+https://github.com/Dev-ZC/Decompressed.git'
-
-# Installs everything: numpy + torch + triton
-# Works on: NVIDIA GPUs (CUDA), AMD GPUs (ROCm), Intel GPUs, and CPU
-```
-
-**Manual Detection:**
-```bash
-# Check what you have:
-python -c "import torch; print('GPU:', torch.cuda.is_available())"
-
-# If GPU available → install with GPU support:
-pip install decompressed[gpu]
-
-# If no GPU or just need CPU:
 pip install decompressed
+# C++ native CPU decompression (~1 GB/s)
+# No GPU dependencies, minimal install
 ```
 
-**Advanced Options:**
+**🎮 GPU - Triton (Vendor Agnostic):**
 ```bash
-# Minimal (CPU-only, auto-builds CUDA if toolkit found)
+pip install decompressed[gpu]
+# Works on: NVIDIA, AMD, Intel GPUs
+# Uses Triton kernels (requires PyTorch + Triton)
+# ~3-10 GB/s depending on GPU
+```
+
+**🚀 GPU - CUDA Native (NVIDIA Only, Fastest):**
+```bash
+# Requires: CUDA Toolkit installed on system
+pip install decompressed[cuda] --config-settings=cmake.define.BUILD_CUDA=ON
+
+# CUDA native kernels (~1-5 GB/s, faster with larger batches)
+# Best performance on NVIDIA GPUs
+```
+
+**🌟 Everything (Both GPU Backends):**
+```bash
+# Install both Triton + CUDA native (requires CUDA Toolkit)
+pip install decompressed[all] --config-settings=cmake.define.BUILD_CUDA=ON
+
+# Automatic backend selection picks fastest available
+```
+
+### Installation Summary
+
+| Command | Dependencies | Backends Available | Best For |
+|---------|-------------|-------------------|----------|
+| `decompressed` | numpy | Python, C++ (CPU) | CPU-only servers, minimal deps |
+| `decompressed[gpu]` | numpy, torch, triton | Python, C++, Triton (GPU) | AMD/Intel GPUs, any PyTorch user |
+| `decompressed[cuda]`* | numpy, torch | Python, C++, CUDA (GPU) | NVIDIA GPUs, maximum performance |
+| `decompressed[all]`* | numpy, torch, triton | All backends | Development, benchmarking |
+
+*Requires `--config-settings=cmake.define.BUILD_CUDA=ON` and CUDA Toolkit installed.
+
+### Fixing Triton "PTX Toolchain" Errors
+
+If you get `PTX was compiled with an unsupported toolchain`, your PyTorch CUDA version doesn't match your system CUDA:
+
+```bash
+# Check your CUDA version
+nvcc --version  # e.g., CUDA 12.1
+
+# Install matching PyTorch
+pip install torch --index-url https://download.pytorch.org/whl/cu121  # for CUDA 12.1
+pip install torch --index-url https://download.pytorch.org/whl/cu118  # for CUDA 11.8
+```
+
+### Quick Install (GitHub)
+
+```bash
+# CPU-only
 pip install 'decompressed @ git+https://github.com/Dev-ZC/Decompressed.git'
 
-# With PyTorch + Triton (GPU-agnostic)
+# With Triton GPU
 pip install 'decompressed[gpu] @ git+https://github.com/Dev-ZC/Decompressed.git'
 
-# With CuPy + Triton (NVIDIA-only alternative)
-pip install 'decompressed[gpu-cupy] @ git+https://github.com/Dev-ZC/Decompressed.git'
-
-# Development (local clone)
-git clone https://github.com/Dev-ZC/Decompressed.git
-cd Decompressed
-pip install -e ".[dev,gpu]"
+# With CUDA native
+pip install 'decompressed[cuda] @ git+https://github.com/Dev-ZC/Decompressed.git' \
+  --config-settings=cmake.define.BUILD_CUDA=ON
 ```
-
-### Installation Options
-
-| Command | NumPy | PyTorch | Triton | Use Case |
-|---------|-------|---------|--------|----------|
-| `pip install decompressed` | Yes | No | No | CPU-only (works everywhere) |
-| `pip install decompressed[gpu]` | Yes | Yes | Yes | GPU acceleration (any vendor) |
-| `pip install decompressed[gpu-cupy]` | Yes | No | Yes | GPU with CuPy (NVIDIA only) |
-| `pip install decompressed[all]` | Yes | Yes | Yes | All features |
-
-### What Gets Built Automatically
-
-| Install Command | Environment | What's Built | Performance |
-|----------------|-------------|--------------|-------------|
-| `[gpu]` | **Colab (T4/A100)** | C++ + CUDA + Triton | 🚀 20+ GB/s |
-| `[gpu]` | **Linux + NVIDIA** | C++ + CUDA + Triton | 🚀 20+ GB/s |
-| `[gpu]` | **Linux + AMD** | C++ + Triton (ROCm) | ⚡ 3-5 GB/s |
-| `[gpu]` | **Windows + NVIDIA** | C++ + CUDA + Triton | 🚀 20+ GB/s |
-| base | **Linux + NVIDIA** | C++ + CUDA (if nvcc) | 🚀 20+ GB/s |
-| base | **macOS (Apple)** | C++ CPU only | ⚡ 1-2 GB/s |
-| base | **No compilers** | Pure Python | 🐌 0.5 GB/s |
-
-**✨ Smart Detection:**
-- `pip install decompressed` → Builds CUDA if toolkit found, CPU otherwise
-- `pip install decompressed[gpu]` → Adds Triton for AMD/Intel GPU support
-- Both work everywhere with graceful fallbacks
-
-See [INSTALL.md](INSTALL.md) for details.
 
 ### Usage
 

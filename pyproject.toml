@@ -34,16 +34,18 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-# GPU acceleration (NVIDIA, AMD, Intel)
+# GPU acceleration via Triton (vendor-agnostic: NVIDIA, AMD, Intel)
+# Install: pip install decompressed[gpu]
 gpu = [
     "torch>=2.0.0",
     "triton>=2.0.0",
 ]
 
-# GPU acceleration (NVIDIA only, alternative to torch)
-gpu-cupy = [
-    "cupy-cuda12x>=12.0.0",
-    "triton>=2.0.0",
+# CUDA native acceleration (NVIDIA only, fastest)
+# Install: pip install decompressed[cuda] --config-settings=cmake.define.BUILD_CUDA=ON
+# Requires: CUDA Toolkit installed on system
+cuda = [
+    "torch>=2.0.0",  # For testing/benchmarking
 ]
 
 # Development dependencies
@@ -55,7 +57,7 @@ dev = [
     "mypy>=1.0.0",
 ]
 
-# All optional dependencies
+# All GPU backends (Triton + CUDA native if built with BUILD_CUDA=ON)
 all = [
     "torch>=2.0.0",
     "triton>=2.0.0",
