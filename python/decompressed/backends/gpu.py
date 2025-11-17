@@ -83,6 +83,9 @@ class TritonBackend(BackendInterface):
     """Triton GPU decompression backend (vendor-agnostic)."""
     
     def __init__(self):
+        self._available = False
+        self._error_msg = None
+        
         try:
             import sys
             from pathlib import Path
@@ -101,7 +104,7 @@ class TritonBackend(BackendInterface):
                 triton_path = str(pkg_root.parent / "cvc" / "triton")
             
             if triton_path is None:
-                raise ImportError("Could not find cvc/triton directory")
+                raise ImportError(f"Could not find cvc/triton directory. Searched:\n  {pkg_root / 'cvc' / 'triton'}\n  {pkg_root.parent / 'cvc' / 'triton'}")
             
             sys.path.insert(0, triton_path)
             from decompress_fp16_triton import decompress_fp16_kernel
@@ -111,8 +114,8 @@ class TritonBackend(BackendInterface):
             self.decompress_int8_kernel = decompress_int8_kernel
             self.triton = triton
             self._available = True
-        except (ImportError, Exception):
-            self._available = False
+        except Exception as e:
+            self._error_msg = f"{type(e).__name__}: {str(e)}"
     
     def decompress_chunk(self, payload, rows, dim, compression, chunk_meta, arr, offset, 
                         framework="torch", cuda_fallback=None):
@@ -220,3 +223,7 @@ class TritonBackend(BackendInterface):
     def is_available(self):
         """Check if Triton is installed and importable."""
         return self._available
+    
+    def get_error(self):
+        """Get the error message if backend failed to load."""
+        return self._error_msg

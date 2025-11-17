@@ -73,6 +73,26 @@ def get_available_backends():
     return _loader.get_backend_availability()
 
 
+def get_backend_errors():
+    """
+    Get error messages for backends that failed to load.
+    
+    Returns:
+        dict: Dictionary mapping backend names to error messages (None if no error)
+    
+    Examples:
+        >>> errors = get_backend_errors()
+        >>> if errors['triton']:
+        >>>     print(f"Triton error: {errors['triton']}")
+    """
+    return {
+        'python': None,  # Always available
+        'cpp': None if _loader.cpp_backend.is_available() else "C++ extensions not built",
+        'cuda': None if _loader.cuda_backend.is_available() else "CUDA extensions not built",
+        'triton': _loader.triton_backend.get_error() if hasattr(_loader.triton_backend, 'get_error') else None,
+    }
+
+
 # Legacy module-level constants for compatibility
 HEADER_MAGIC = b"CVCF"
 
