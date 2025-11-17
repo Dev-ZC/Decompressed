@@ -36,18 +36,40 @@ pip install decompressed[gpu]
 **🚀 GPU - CUDA Native (NVIDIA Only, Fastest):**
 ```bash
 # Requires: CUDA Toolkit installed on system
-# Auto-detects and builds CUDA if toolkit found
-pip install decompressed[cuda]
+# IMPORTANT: Use --no-binary to build against YOUR CUDA version
+pip install --no-binary=decompressed decompressed[cuda]
 
 # CUDA native kernels (~1-5 GB/s, faster with larger batches)
 # Best performance on NVIDIA GPUs
 ```
 
+### ⚠️ CUDA Installation - Important!
+
+**Always build CUDA from source** to match your CUDA toolkit:
+
+```bash
+# ✅ Correct way to install CUDA support
+pip install --no-binary=decompressed decompressed[cuda]
+
+# ❌ Don't use this (may install pre-built binary with wrong CUDA version)
+pip install decompressed[cuda]
+```
+
+The `--no-binary=decompressed` flag ensures the package builds against **YOUR installed CUDA toolkit**, avoiding "PTX unsupported toolchain" errors.
+
+**Why?** CUDA binaries must match your exact CUDA version (11.8, 12.1, 12.4, etc.). Pre-built wheels may not match your system.
+
+**Alternative:** Use Triton instead (no build needed, works on all GPUs):
+```bash
+pip install decompressed[gpu]  # Uses Triton, ~80-90% of CUDA performance
+```
+
+See [INSTALL_CUDA.md](INSTALL_CUDA.md) for troubleshooting.
+
 **🌟 Everything (Both GPU Backends):**
 ```bash
 # Install both Triton + CUDA native
-# Auto-detects and builds CUDA if toolkit found
-pip install decompressed[all]
+pip install --no-binary=decompressed decompressed[all]
 
 # Automatic backend selection picks fastest available
 ```
@@ -82,14 +104,16 @@ pip install torch --index-url https://download.pytorch.org/whl/cu118  # for CUDA
 # CPU-only
 pip install 'decompressed @ git+https://github.com/Dev-ZC/Decompressed.git'
 
-# With Triton GPU
+# With Triton GPU (no build needed, works on all GPUs)
 pip install 'decompressed[gpu] @ git+https://github.com/Dev-ZC/Decompressed.git'
 
-# With CUDA native (auto-detects CUDA Toolkit)
-pip install 'decompressed[cuda] @ git+https://github.com/Dev-ZC/Decompressed.git'
+# With CUDA native (builds against YOUR CUDA version)
+pip install --no-binary=decompressed \
+  'decompressed[cuda] @ git+https://github.com/Dev-ZC/Decompressed.git'
 
 # Everything (Triton + CUDA)
-pip install 'decompressed[all] @ git+https://github.com/Dev-ZC/Decompressed.git'
+pip install --no-binary=decompressed \
+  'decompressed[all] @ git+https://github.com/Dev-ZC/Decompressed.git'
 ```
 
 ### Usage
