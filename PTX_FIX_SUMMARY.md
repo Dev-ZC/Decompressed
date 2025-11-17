@@ -14,27 +14,38 @@ CUDA error: the provided PTX was compiled with an unsupported toolchain
 
 ## Root Cause
 
-In `CMakeLists.txt`:
-```cmake
-set(CMAKE_CUDA_ARCHITECTURES "native")  # ❌ Only works on build GPU
-CUDA_SEPARABLE_COMPILATION OFF          # ❌ No portable PTX
-```
+**CUDA version mismatch** between compilation and runtime:
+- CMake was finding system CUDA (e.g., CUDA 12.x)
+- PyTorch was built with different CUDA (e.g., CUDA 11.8)
+- Compiled PTX was incompatible → PTX toolchain error
 
-This compiled CUDA code **only for the GPU present at build time**. Any mismatch → PTX error.
+Also:
+```cmake
+CUDA_SEPARABLE_COMPILATION OFF  # ❌ No portable PTX
+```
 
 ## What I Fixed
 
-### 1. Multi-Architecture Compilation ✅
-Changed from single "native" to multiple GPU architectures:
+### 1. Detect and Use PyTorch's CUDA ✅
 ```cmake
-# Now supports: V100, T4, A100, RTX 30xx, RTX 40xx, H100
-set(CMAKE_CUDA_ARCHITECTURES "70;75;80;86;89;90")
+# Find PyTorch's CUDA first to ensure version compatibility
+execute_process(
+    COMMAND python -c "import torch; print(torch.utils.cpp_extension.CUDA_HOME)"
+    OUTPUT_VARIABLE TORCH_CUDA_HOME
+)
+set(CUDAToolkit_ROOT "${TORCH_CUDA_HOME}")
 ```
 
 ### 2. Enabled Separable Compilation ✅
 ```cmake
 CUDA_SEPARABLE_COMPILATION ON   # Generate portable PTX
 CUDA_RESOLVE_DEVICE_SYMBOLS ON  # Proper linking
+```
+
+### 3. Keep Native Architecture ✅
+```cmake
+# Use native for best performance, PTX handles compatibility
+set(CMAKE_CUDA_ARCHITECTURES "native")
 ```
 
 ## How to Apply the Fix
