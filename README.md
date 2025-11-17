@@ -36,7 +36,8 @@ pip install decompressed[gpu]
 **🚀 GPU - CUDA Native (NVIDIA Only, Fastest):**
 ```bash
 # Requires: CUDA Toolkit installed on system
-pip install decompressed[cuda] --config-settings=cmake.define.BUILD_CUDA=ON
+# Auto-detects and builds CUDA if toolkit found
+pip install decompressed[cuda]
 
 # CUDA native kernels (~1-5 GB/s, faster with larger batches)
 # Best performance on NVIDIA GPUs
@@ -44,8 +45,9 @@ pip install decompressed[cuda] --config-settings=cmake.define.BUILD_CUDA=ON
 
 **🌟 Everything (Both GPU Backends):**
 ```bash
-# Install both Triton + CUDA native (requires CUDA Toolkit)
-pip install decompressed[all] --config-settings=cmake.define.BUILD_CUDA=ON
+# Install both Triton + CUDA native
+# Auto-detects and builds CUDA if toolkit found
+pip install decompressed[all]
 
 # Automatic backend selection picks fastest available
 ```
@@ -56,10 +58,10 @@ pip install decompressed[all] --config-settings=cmake.define.BUILD_CUDA=ON
 |---------|-------------|-------------------|----------|
 | `decompressed` | numpy | Python, C++ (CPU) | CPU-only servers, minimal deps |
 | `decompressed[gpu]` | numpy, torch, triton | Python, C++, Triton (GPU) | AMD/Intel GPUs, any PyTorch user |
-| `decompressed[cuda]`* | numpy, torch | Python, C++, CUDA (GPU) | NVIDIA GPUs, maximum performance |
-| `decompressed[all]`* | numpy, torch, triton | All backends | Development, benchmarking |
+| `decompressed[cuda]` | numpy, torch | Python, C++, CUDA (GPU)* | NVIDIA GPUs, maximum performance |
+| `decompressed[all]` | numpy, torch, triton | All backends* | Development, benchmarking |
 
-*Requires `--config-settings=cmake.define.BUILD_CUDA=ON` and CUDA Toolkit installed.
+*CUDA native backend auto-builds if CUDA Toolkit is installed on system.
 
 ### Fixing Triton "PTX Toolchain" Errors
 
@@ -83,9 +85,11 @@ pip install 'decompressed @ git+https://github.com/Dev-ZC/Decompressed.git'
 # With Triton GPU
 pip install 'decompressed[gpu] @ git+https://github.com/Dev-ZC/Decompressed.git'
 
-# With CUDA native
-pip install 'decompressed[cuda] @ git+https://github.com/Dev-ZC/Decompressed.git' \
-  --config-settings=cmake.define.BUILD_CUDA=ON
+# With CUDA native (auto-detects CUDA Toolkit)
+pip install 'decompressed[cuda] @ git+https://github.com/Dev-ZC/Decompressed.git'
+
+# Everything (Triton + CUDA)
+pip install 'decompressed[all] @ git+https://github.com/Dev-ZC/Decompressed.git'
 ```
 
 ### Usage
