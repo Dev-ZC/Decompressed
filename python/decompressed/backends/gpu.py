@@ -87,28 +87,9 @@ class TritonBackend(BackendInterface):
         self._error_msg = None
         
         try:
-            import sys
-            from pathlib import Path
             import triton
-            
-            # Find cvc/triton directory (works both in dev and installed)
-            # In installed package, cvc/ is at package root level
-            triton_path = None
-            
-            # Try installed location first (cvc at package level)
-            pkg_root = Path(__file__).parent.parent.parent.parent
-            if (pkg_root / "cvc" / "triton").exists():
-                triton_path = str(pkg_root / "cvc" / "triton")
-            # Try development location (cvc at repo root)
-            elif (pkg_root.parent / "cvc" / "triton").exists():
-                triton_path = str(pkg_root.parent / "cvc" / "triton")
-            
-            if triton_path is None:
-                raise ImportError(f"Could not find cvc/triton directory. Searched:\n  {pkg_root / 'cvc' / 'triton'}\n  {pkg_root.parent / 'cvc' / 'triton'}")
-            
-            sys.path.insert(0, triton_path)
-            from decompress_fp16_triton import decompress_fp16_kernel
-            from decompress_int8_triton import decompress_int8_triton_kernel as decompress_int8_kernel
+            from ..triton.decompress_fp16_triton import decompress_fp16_kernel
+            from ..triton.decompress_int8_triton import decompress_int8_triton_kernel as decompress_int8_kernel
             
             self.decompress_fp16_kernel = decompress_fp16_kernel
             self.decompress_int8_kernel = decompress_int8_kernel
