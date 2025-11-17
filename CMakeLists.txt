@@ -15,38 +15,23 @@ else()
     option(BUILD_CUDA "Build CUDA kernels" ON)
 endif()
 
-# Find Python first (needed for CUDA detection)
-find_package(Python3 COMPONENTS Interpreter Development REQUIRED)
-
 # Find packages
 set(CUDA_ACTUALLY_AVAILABLE OFF)
 if(BUILD_CUDA)
-    # First try to find PyTorch's CUDA to ensure version compatibility
-    execute_process(
-        COMMAND ${Python3_EXECUTABLE} -c "import torch; print(torch.utils.cpp_extension.CUDA_HOME)"
-        OUTPUT_VARIABLE TORCH_CUDA_HOME
-        OUTPUT_STRIP_TRAILING_WHITESPACE
-        ERROR_QUIET
-    )
-    
-    if(TORCH_CUDA_HOME AND NOT TORCH_CUDA_HOME STREQUAL "None")
-        set(CUDAToolkit_ROOT "${TORCH_CUDA_HOME}")
-        message(STATUS "🔍 Using PyTorch's CUDA: ${TORCH_CUDA_HOME}")
-    endif()
-    
     # Try to find CUDA (not REQUIRED - graceful fallback if missing)
     find_package(CUDAToolkit QUIET)
     if(CUDAToolkit_FOUND)
         enable_language(CUDA)
         set(CMAKE_CUDA_STANDARD 17)
         set(CMAKE_CUDA_STANDARD_REQUIRED ON)
-        # Use native architecture for best performance
-        # PTX will be generated automatically for forward compatibility
-        if(NOT DEFINED CMAKE_CUDA_ARCHITECTURES)
+        # Use native architecture for best performance, fallback to common architectures
+        if(CMAKE_CUDA_COMPILER_VERSION VERSION_GREATER_EQUAL "11.0")
             set(CMAKE_CUDA_ARCHITECTURES "native" CACHE STRING "CUDA architectures")
+        else()
+            set(CMAKE_CUDA_ARCHITECTURES "70;75;80;86" CACHE STRING "CUDA architectures")
         endif()
         set(CUDA_ACTUALLY_AVAILABLE ON)
-        message(STATUS "✅ CUDA Toolkit found: Building with CUDA support (v${CUDAToolkit_VERSION})")
+        message(STATUS "✅ CUDA Toolkit found: Building with CUDA support")
     else()
         message(STATUS "⚠️  CUDA Toolkit not found: Building without CUDA support")
         set(BUILD_CUDA OFF)
@@ -54,6 +39,7 @@ if(BUILD_CUDA)
 endif()
 
 if(BUILD_PYTHON_BINDINGS)
+    find_package(Python3 COMPONENTS Interpreter Development REQUIRED)
     find_package(pybind11 CONFIG)
     if(NOT pybind11_FOUND)
         # Fall back to Python-installed pybind11
@@ -141,9 +127,9 @@ if(BUILD_PYTHON_BINDINGS)
         # Create object library for CUDA sources to handle device linking
         add_library(cuda_objs OBJECT ${CUDA_SOURCES})
         set_target_properties(cuda_objs PROPERTIES
-            CUDA_SEPARABLE_COMPILATION ON  # Enable separable compilation for better compatibility
+            CUDA_SEPARABLE_COMPILATION OFF  # Compile without separable compilation
             POSITION_INDEPENDENT_CODE ON
-            CUDA_RESOLVE_DEVICE_SYMBOLS ON
+            CUDA_RESOLVE_DEVICE_SYMBOLS OFF
         )
         target_include_directories(cuda_objs PRIVATE 
             ${CMAKE_CURRENT_SOURCE_DIR}
