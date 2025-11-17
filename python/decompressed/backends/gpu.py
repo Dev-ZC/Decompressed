@@ -86,16 +86,32 @@ class TritonBackend(BackendInterface):
         try:
             import sys
             from pathlib import Path
-            sys.path.insert(0, str(Path(__file__).parent.parent.parent.parent / "triton"))
+            import triton
+            
+            # Find cvc/triton directory (works both in dev and installed)
+            # In installed package, cvc/ is at package root level
+            triton_path = None
+            
+            # Try installed location first (cvc at package level)
+            pkg_root = Path(__file__).parent.parent.parent.parent
+            if (pkg_root / "cvc" / "triton").exists():
+                triton_path = str(pkg_root / "cvc" / "triton")
+            # Try development location (cvc at repo root)
+            elif (pkg_root.parent / "cvc" / "triton").exists():
+                triton_path = str(pkg_root.parent / "cvc" / "triton")
+            
+            if triton_path is None:
+                raise ImportError("Could not find cvc/triton directory")
+            
+            sys.path.insert(0, triton_path)
             from decompress_fp16_triton import decompress_fp16_kernel
             from decompress_int8_triton import decompress_int8_triton_kernel as decompress_int8_kernel
-            import triton
             
             self.decompress_fp16_kernel = decompress_fp16_kernel
             self.decompress_int8_kernel = decompress_int8_kernel
             self.triton = triton
             self._available = True
-        except ImportError:
+        except (ImportError, Exception):
             self._available = False
     
     def decompress_chunk(self, payload, rows, dim, compression, chunk_meta, arr, offset, 
