@@ -124,11 +124,13 @@ def load_cvc(path: str, device="cpu", framework="torch", backend="auto"):
             elif use_backend == "cpp":
                 # C++ native (uses HAS_NATIVE imports)
                 if compression == "fp16":
-                    arr[offset:offset+rows] = decompress_fp16_cpu(payload, rows, dim)
+                    src_np = np.frombuffer(payload, dtype=np.uint16)
+                    result = decompress_fp16_cpu(src_np)
+                    arr[offset:offset+rows] = result.reshape(rows, dim)
                 else:
-                    arr[offset:offset+rows] = decompress_int8_cpu(
-                        payload, rows, dim, chunk["min"], chunk["scale"]
-                    )
+                    src_np = np.frombuffer(payload, dtype=np.uint8)
+                    result = decompress_int8_cpu(src_np, chunk["min"], chunk["scale"])
+                    arr[offset:offset+rows] = result.reshape(rows, dim)
                     
             elif use_backend == "cuda":
                 # CUDA native kernels (fastest, NVIDIA only)
