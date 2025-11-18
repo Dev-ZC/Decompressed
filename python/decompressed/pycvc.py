@@ -4,7 +4,7 @@ This module provides the high-level interface for working with CVC compressed fi
 """
 
 from .loader import CVCLoader
-from .packer import pack_cvc as _pack_cvc
+from .packer import pack_cvc as _pack_cvc, pack_cvc_sections as _pack_cvc_sections
 
 # Singleton loader instance
 _loader = CVCLoader()
@@ -41,7 +41,7 @@ def load_cvc(path, device="cpu", framework="torch", backend="auto"):
     return _loader.load(path, device=device, framework=framework, backend=backend)
 
 
-def pack_cvc(vectors, output_path, compression="fp16", chunk_size=100000):
+def pack_cvc(vectors, output_path, compression="fp16", chunk_size=100000, chunk_metadata=None):
     """
     Pack numpy array of vectors into .cvc compressed format.
     
@@ -50,13 +50,59 @@ def pack_cvc(vectors, output_path, compression="fp16", chunk_size=100000):
         output_path: Path to output .cvc file
         compression: "fp16" or "int8"
         chunk_size: Number of vectors per chunk
+        chunk_metadata: Optional list of dicts with metadata per chunk.
+                       Must have length equal to the number of chunks.
     
     Examples:
         >>> import numpy as np
         >>> embeddings = np.random.randn(10000, 768).astype(np.float32)
         >>> pack_cvc(embeddings, "embeddings.cvc", compression="fp16")
+        
+        >>> # With custom chunk metadata
+        >>> metadata = [{"source": "batch1"}, {"source": "batch2"}]
+        >>> pack_cvc(embeddings, "embeddings.cvc", chunk_size=5000, chunk_metadata=metadata)
     """
-    return _pack_cvc(vectors, output_path, compression=compression, chunk_size=chunk_size)
+    return _pack_cvc(vectors, output_path, compression=compression, chunk_size=chunk_size, chunk_metadata=chunk_metadata)
+
+
+def pack_cvc_sections(sections, output_path, compression="fp16", chunk_size=100000):
+    """
+    Pack multiple arrays with section-level metadata into a single .cvc file.
+    
+    This allows you to combine data from different sources (with arbitrary sizes)
+    into one file while maintaining section-level metadata for filtering.
+    
+    Args:
+        sections: List of tuples (array, metadata_dict) where:
+                 - array: np.ndarray of shape (n_vectors, dimension), dtype float32
+                 - metadata_dict: dict with metadata for this section
+        output_path: Path to output .cvc file
+        compression: "fp16" or "int8"
+        chunk_size: Number of vectors per chunk (applies uniformly)
+    
+    Examples:
+        >>> import numpy as np
+        >>> 
+        >>> # Different sized arrays from different sources
+        >>> wikipedia = np.random.randn(10_000, 768).astype(np.float32)
+        >>> arxiv = np.random.randn(110_000, 768).astype(np.float32)
+        >>> github = np.random.randn(50_000, 768).astype(np.float32)
+        >>> 
+        >>> sections = [
+        >>>     (wikipedia, {"source": "wikipedia", "date": "2024-01"}),
+        >>>     (arxiv, {"source": "arxiv", "date": "2024-02", "quality": "high"}),
+        >>>     (github, {"source": "github", "date": "2024-03"}),
+        >>> ]
+        >>> 
+        >>> pack_cvc_sections(sections, "combined.cvc", chunk_size=10_000)
+        >>> 
+        >>> # Later, load only arxiv vectors
+        >>> from decompressed import load_cvc_range
+        >>> arxiv_vectors = load_cvc_range("combined.cvc", 
+        >>>                                 section_key="source", 
+        >>>                                 section_value="arxiv")
+    """
+    return _pack_cvc_sections(sections, output_path, compression=compression, chunk_size=chunk_size)
 
 
 def get_available_backends():
@@ -156,7 +202,8 @@ def load_cvc_chunked(path, chunk_indices=None, device="cpu", framework="torch", 
     return _loader.load_chunks(path, chunk_indices, device, framework, backend)
 
 
-def load_cvc_range(path, chunk_indices, device="cpu", framework="torch", backend="auto"):
+def load_cvc_range(path, chunk_indices=None, device="cpu", framework="torch", backend="auto", 
+                   metadata_key=None, metadata_value=None, section_key=None, section_value=None):
     """
     Load specific chunks from a .cvc file and concatenate them into a single array.
     
@@ -167,9 +214,14 @@ def load_cvc_range(path, chunk_indices, device="cpu", framework="torch", backend
         path: Path to .cvc file
         chunk_indices: List of chunk indices to load (0-indexed).
                       Use get_cvc_info() to determine how many chunks exist.
+                      Cannot be used together with filtering parameters.
         device: "cpu" or "cuda"
         framework: "torch" or "cupy" (for GPU arrays)
         backend: Backend to use - "auto", "python", "cpp", "cuda", or "triton"
+        metadata_key: Optional metadata key to filter chunks by (for files with chunk_metadata)
+        metadata_value: Value to match for metadata_key
+        section_key: Optional section metadata key to filter by (for files packed with pack_cvc_sections)
+        section_value: Value to match for section_key
         
     Returns:
         Array containing the requested chunks concatenated together
@@ -183,8 +235,21 @@ def load_cvc_range(path, chunk_indices, device="cpu", framework="torch", backend
         >>>                          chunk_indices=[0, 5, 10],
         >>>                          device="cuda",
         >>>                          backend="triton")
+        
+        >>> # Load chunks by chunk metadata (for files with chunk_metadata)
+        >>> vectors = load_cvc_range("embeddings.cvc", 
+        >>>                          metadata_key="source", 
+        >>>                          metadata_value="arxiv")
+        
+        >>> # Load by section metadata (for files packed with pack_cvc_sections)
+        >>> vectors = load_cvc_range("combined.cvc",
+        >>>                          section_key="source",
+        >>>                          section_value="arxiv",
+        >>>                          device="cuda")
     """
-    return _loader.load_range(path, chunk_indices, device, framework, backend)
+    return _loader.load_range(path, chunk_indices, device, framework, backend, 
+                             metadata_key=metadata_key, metadata_value=metadata_value,
+                             section_key=section_key, section_value=section_value)
 
 
 # Legacy module-level constants for compatibility

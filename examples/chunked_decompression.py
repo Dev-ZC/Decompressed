@@ -38,6 +38,36 @@ def example_create_sample_file():
     return "sample_embeddings.cvc"
 
 
+def example_create_file_with_metadata():
+    """Create a .cvc file with custom chunk metadata."""
+    print("=== Creating file with custom chunk metadata ===")
+    
+    # Generate sample embeddings: 250k vectors, 384 dimensions
+    num_vectors = 250_000
+    dimension = 384
+    embeddings = np.random.randn(num_vectors, dimension).astype(np.float32)
+    
+    # Define metadata for each chunk (5 chunks of 50k vectors each)
+    chunk_metadata = [
+        {"source": "wikipedia", "date": "2024-01", "topic": "science"},
+        {"source": "arxiv", "date": "2024-02", "topic": "ML"},
+        {"source": "github", "date": "2024-03", "topic": "code"},
+        {"source": "books", "date": "2024-04", "topic": "history"},
+        {"source": "news", "date": "2024-05", "topic": "current_events"},
+    ]
+    
+    # Pack with metadata
+    pack_cvc(
+        embeddings,
+        output_path="sample_with_metadata.cvc",
+        compression="fp16",
+        chunk_size=50_000,
+        chunk_metadata=chunk_metadata,
+    )
+    print(f"Created sample_with_metadata.cvc with custom metadata\n")
+    return "sample_with_metadata.cvc"
+
+
 def example_inspect_file(path):
     """Demonstrate get_cvc_info() for inspecting file metadata."""
     print("=== Example 1: Inspecting File Metadata ===")
@@ -49,6 +79,14 @@ def example_inspect_file(path):
     print(f"  Compression: {info['compression']}")
     print(f"  Number of chunks: {info['num_chunks']}")
     print(f"  Chunk sizes: {[chunk['rows'] for chunk in info['chunks']]}")
+    
+    # Show metadata if present
+    has_metadata = any(chunk['metadata'] is not None for chunk in info['chunks'])
+    if has_metadata:
+        print(f"  Chunk metadata:")
+        for chunk in info['chunks']:
+            if chunk['metadata']:
+                print(f"    Chunk {chunk['index']}: {chunk['metadata']}")
     print()
 
 
@@ -142,20 +180,55 @@ def example_compare_with_full_load(path):
     print()
 
 
+def example_metadata_filtering(path):
+    """Demonstrate metadata-based chunk filtering."""
+    print("=== Example 7: Metadata-Based Filtering ===")
+    
+    # Load only chunks from a specific source
+    print("Loading chunks with source='arxiv'...")
+    arxiv_vectors = load_cvc_range(path, 
+                                   metadata_key="source", 
+                                   metadata_value="arxiv")
+    print(f"  Loaded shape: {arxiv_vectors.shape}")
+    
+    # Load chunks by topic
+    print("\nLoading chunks with topic='ML'...")
+    ml_vectors = load_cvc_range(path,
+                                metadata_key="topic",
+                                metadata_value="ML")
+    print(f"  Loaded shape: {ml_vectors.shape}")
+    
+    # Compare with manual filtering
+    print("\nComparing with manual filtering...")
+    info = get_cvc_info(path)
+    manual_indices = [
+        chunk['index'] 
+        for chunk in info['chunks']
+        if chunk.get('metadata') and chunk['metadata'].get('source') == 'arxiv'
+    ]
+    manual_vectors = load_cvc_range(path, chunk_indices=manual_indices)
+    are_equal = np.allclose(arxiv_vectors, manual_vectors)
+    print(f"  Results match manual filtering: {are_equal}")
+    print()
+
+
 def main():
     """Run all examples."""
     print("Chunked Decompression Examples\n" + "="*50 + "\n")
     
-    # Create sample file
+    # Create sample files
     path = example_create_sample_file()
+    path_with_metadata = example_create_file_with_metadata()
     
     # Run examples
     example_inspect_file(path)
+    example_inspect_file(path_with_metadata)  # Show file with metadata
     example_iterate_all_chunks(path)
     example_load_specific_chunks(path)
     example_load_chunk_range(path)
     example_memory_efficient_processing(path)
     example_compare_with_full_load(path)
+    example_metadata_filtering(path_with_metadata)  # New metadata filtering example
     
     print("All examples completed!")
 

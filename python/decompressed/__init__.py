@@ -4,7 +4,8 @@ __version__ = "0.1.0"
 
 from .pycvc import (
     load_cvc, 
-    pack_cvc, 
+    pack_cvc,
+    pack_cvc_sections,
     get_available_backends, 
     get_backend_errors,
     get_cvc_info,
@@ -14,7 +15,8 @@ from .pycvc import (
 
 __all__ = [
     'load_cvc', 
-    'pack_cvc', 
+    'pack_cvc',
+    'pack_cvc_sections',
     'get_available_backends', 
     'get_backend_errors',
     'get_cvc_info',

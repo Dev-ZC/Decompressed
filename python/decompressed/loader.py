@@ -190,7 +190,16 @@ class CVCLoader:
         with open(path, "rb") as f:
             header = self._read_header(f)
             header['num_chunks'] = len(header['chunks'])
-            return header
+            return {
+                "num_vectors": header["num_vectors"],
+                "dimension": header["dimension"],
+                "compression": header["compression"],
+                "chunks": [
+                    {"index": i, "rows": chunk["rows"], "metadata": chunk.get("metadata")} 
+                    for i, chunk in enumerate(header["chunks"])
+                ],
+                "num_chunks": len(header['chunks'])
+            }
     
     def load_chunks(self, path, chunk_indices=None, device="cpu", framework="torch", backend="auto"):
         """
@@ -279,22 +288,101 @@ class CVCLoader:
                     # Skip this chunk
                     f.seek(chunk_len, 1)  # Seek forward relative to current position
     
-    def load_range(self, path, chunk_indices, device="cpu", framework="torch", backend="auto"):
+    def load_range(self, path, chunk_indices=None, device="cpu", framework="torch", backend="auto", metadata_key=None, metadata_value=None, section_key=None, section_value=None):
         """
         Load specific chunks from a .cvc file and concatenate them.
         
         Args:
             path: Path to .cvc file
-            chunk_indices: List of chunk indices to load (0-indexed)
+            chunk_indices: List of chunk indices to load (0-indexed). If None and metadata filtering
+                          is not used, loads all chunks.
             device: "cpu" or "cuda"
             framework: "torch" or "cupy" (for GPU arrays)
             backend: Backend to use - "auto", "python", "cpp", "cuda", or "triton"
+            metadata_key: Optional key to filter chunks by chunk metadata
+            metadata_value: Value to match for metadata_key
+            section_key: Optional key to filter by section metadata (for files packed with pack_cvc_sections)
+            section_value: Value to match for section_key
             
         Returns:
             Array containing the requested chunks concatenated together
         """
+        # Check for conflicting parameters
+        if chunk_indices is not None and (metadata_key is not None or section_key is not None):
+            raise ValueError("Cannot specify chunk_indices together with metadata or section filtering")
+        
+        if metadata_key is not None and section_key is not None:
+            raise ValueError("Cannot specify both metadata_key and section_key filtering")
+        
+        # Section-based filtering (new approach)
+        section_extraction_needed = False
+        section_ranges = []  # List of (chunk_idx, start_in_chunk, end_in_chunk)
+        
+        if section_key is not None and section_value is not None:
+            section_extraction_needed = True
+            path_obj = Path(path)
+            with open(path_obj, "rb") as f:
+                header = self._read_header(f)
+                
+                # Check if file has sections
+                if "sections" not in header:
+                    raise ValueError("File does not have section metadata. Use pack_cvc_sections() to create files with sections.")
+                
+                # Find matching sections
+                matching_sections = [
+                    sec for sec in header["sections"]
+                    if sec.get("metadata", {}).get(section_key) == section_value
+                ]
+                
+                if not matching_sections:
+                    raise ValueError(f"No sections found with {section_key}={section_value}")
+                
+                # Find all chunks that intersect with matching sections and extract ranges
+                chunk_set = set()
+                for chunk_idx, chunk in enumerate(header["chunks"]):
+                    if "sections" in chunk:
+                        for chunk_section in chunk["sections"]:
+                            # Check if this chunk section matches our filter
+                            if chunk_section.get("metadata", {}).get(section_key) == section_value:
+                                chunk_set.add(chunk_idx)
+                                section_ranges.append((
+                                    chunk_idx,
+                                    chunk_section["start_in_chunk"],
+                                    chunk_section["end_in_chunk"]
+                                ))
+                                break
+                
+                chunk_indices = sorted(chunk_set)
+                
+                if not chunk_indices:
+                    raise ValueError(f"No chunks found for sections with {section_key}={section_value}")
+        
+        # Chunk metadata filtering (original approach)
+        elif metadata_key is not None and metadata_value is not None:
+            # Get file info and filter by metadata
+            info = self.get_info(path)
+            chunk_indices = [
+                chunk['index'] 
+                for chunk in info['chunks']
+                if chunk.get('metadata') and chunk['metadata'].get(metadata_key) == metadata_value
+            ]
+            
+            if not chunk_indices:
+                raise ValueError(f"No chunks found with {metadata_key}={metadata_value}")
+        
         chunks = []
+        
+        # Load chunks
         for chunk_idx, chunk_arr in self.load_chunks(path, chunk_indices, device, framework, backend):
+            # If section extraction is needed, extract only the relevant portion
+            if section_extraction_needed:
+                # Find the section range for this chunk
+                for range_chunk_idx, start_in_chunk, end_in_chunk in section_ranges:
+                    if range_chunk_idx == chunk_idx:
+                        # Extract the section portion from this chunk
+                        chunk_arr = chunk_arr[start_in_chunk:end_in_chunk]
+                        break
+            
             chunks.append(chunk_arr)
         
         if not chunks:

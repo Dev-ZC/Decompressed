@@ -236,12 +236,26 @@ pack_cvc(
     compression="fp16",
     chunk_size=100_000,
 )
+
+# With custom chunk metadata (10 chunks of 100k vectors each)
+metadata = [
+    {"source": "batch_0", "date": "2024-01"},
+    {"source": "batch_1", "date": "2024-02"},
+    # ... 8 more chunks
+]
+pack_cvc(
+    embeddings,
+    output_path="embeddings_with_metadata.cvc",
+    compression="fp16",
+    chunk_size=100_000,
+    chunk_metadata=metadata,
+)
 ```
 
 **Signature**
 
 ```python
-pack_cvc(vectors, output_path, compression="fp16", chunk_size=100000)
+pack_cvc(vectors, output_path, compression="fp16", chunk_size=100000, chunk_metadata=None)
 ```
 
 **Arguments**
@@ -260,9 +274,88 @@ pack_cvc(vectors, output_path, compression="fp16", chunk_size=100000)
 - `chunk_size`: `int`  
   Number of vectors per chunk.
 
+- `chunk_metadata`: `list[dict]` or `None` (optional)  
+  Optional list of metadata dictionaries, one per chunk. Must have length equal to the number of chunks (`ceil(num_vectors / chunk_size)`). Metadata can be retrieved later using `get_cvc_info()`.
+
 **Returns**
 
 - `None`. Writes the `.cvc` file to `output_path`.
+
+---
+
+### `pack_cvc_sections`
+
+**Combine multiple arrays of different sizes with section-level metadata**
+
+```python
+from decompressed import pack_cvc_sections
+import numpy as np
+
+# Create arrays from different sources (arbitrary sizes!)
+wikipedia = np.random.randn(10_000, 768).astype(np.float32)
+arxiv = np.random.randn(110_000, 768).astype(np.float32)
+github = np.random.randn(25_000, 768).astype(np.float32)
+
+# Pack them into one file with section metadata
+sections = [
+    (wikipedia, {"source": "wikipedia", "quality": "high"}),
+    (arxiv, {"source": "arxiv", "quality": "high", "date": "2024-02"}),
+    (github, {"source": "github", "quality": "medium"}),
+]
+
+pack_cvc_sections(
+    sections,
+    output_path="combined.cvc",
+    compression="fp16",
+    chunk_size=10_000
+)
+
+# Later, load only the data you need
+from decompressed import load_cvc_range
+
+arxiv_only = load_cvc_range("combined.cvc", 
+                            section_key="source", 
+                            section_value="arxiv")
+# Returns 110k vectors (only arXiv section)
+```
+
+**Signature**
+
+```python
+pack_cvc_sections(sections, output_path, compression="fp16", chunk_size=100000)
+```
+
+**Arguments**
+
+- `sections`: `list[tuple[ndarray, dict]]`  
+  List of `(array, metadata_dict)` tuples where:
+  - `array`: `numpy.ndarray` of shape `(n_vectors, dimension)`, dtype `float32`
+  - `metadata_dict`: Dictionary with metadata for this section (any keys/values)
+
+- `output_path`: `str` or `pathlib.Path`  
+  Path at which to write the `.cvc` file.
+
+- `compression`: `str`  
+  Compression scheme (`"fp16"` or `"int8"`).
+
+- `chunk_size`: `int`  
+  Number of vectors per chunk (applied uniformly to all sections).
+
+**Returns**
+
+- `None`. Writes the `.cvc` file to `output_path`.
+
+**When to use `pack_cvc_sections` vs `pack_cvc`:**
+
+- **Use `pack_cvc_sections`** when:
+  - You have multiple data sources with different sizes
+  - Sizes don't align with chunk boundaries (e.g., 10k + 110k + 25k)
+  - You want to filter by data source or other section properties
+  - You need flexible metadata per data source
+
+- **Use `pack_cvc`** when:
+  - You have a single array
+  - You need chunk-level metadata for batch processing
 
 ---
 
@@ -292,7 +385,10 @@ get_cvc_info(path)
   - `num_vectors`: Total number of vectors in the file.
   - `dimension`: Vector dimensionality.
   - `compression`: Default compression scheme.
-  - `chunks`: List of chunk metadata (each with `rows`, `compression`, etc.).
+  - `chunks`: List of chunk information. Each chunk dict contains:
+    - `index`: Chunk index (0-based).
+    - `rows`: Number of vectors in this chunk.
+    - `metadata`: Custom metadata for this chunk (if provided during packing), or `None`.
   - `num_chunks`: Number of chunks.
 
 **Use Cases**
@@ -384,7 +480,8 @@ vectors = load_cvc_range(
 **Signature**
 
 ```python
-load_cvc_range(path, chunk_indices, device="cpu", framework="torch", backend="auto")
+load_cvc_range(path, chunk_indices=None, device="cpu", framework="torch", backend="auto",
+               metadata_key=None, metadata_value=None)
 ```
 
 **Arguments**
@@ -392,9 +489,10 @@ load_cvc_range(path, chunk_indices, device="cpu", framework="torch", backend="au
 - `path`: `str` or `pathlib.Path`  
   Path to a `.cvc` file on disk.
 
-- `chunk_indices`: `list[int]`  
+- `chunk_indices`: `list[int]` or `None`  
   List of chunk indices to load (0-indexed).  
-  Use `get_cvc_info()` to determine how many chunks exist.
+  Use `get_cvc_info()` to determine how many chunks exist.  
+  Cannot be used together with `metadata_key`/`metadata_value`.
 
 - `device`: `str`  
   - `"cpu"`: decompress to CPU memory.
@@ -408,6 +506,12 @@ load_cvc_range(path, chunk_indices, device="cpu", framework="torch", backend="au
 - `backend`: `str`  
   Backend implementation to use (same options as `load_cvc`).
 
+- `metadata_key`: `str` or `None`  
+  Optional metadata key to filter chunks by.
+
+- `metadata_value`: `any` or `None`  
+  Value to match for `metadata_key`. Only chunks with matching metadata will be loaded.
+
 **Returns**
 
 - Array containing the requested chunks concatenated together.
@@ -417,6 +521,76 @@ load_cvc_range(path, chunk_indices, device="cpu", framework="torch", backend="au
 - **Partial loading**: Load only a subset of vectors from a large collection.
 - **Range queries**: Load vectors in a specific index range without loading the full file.
 - **Sharded processing**: Process different chunks on different GPUs or machines.
+
+---
+
+## Advanced Pattern: Metadata-Based Filtering
+
+### Section-Based Filtering (Recommended)
+
+When you have multiple data sources with different sizes, use `pack_cvc_sections` and filter by section metadata:
+
+```python
+from decompressed import pack_cvc_sections, load_cvc_range
+import numpy as np
+
+# Pack multiple sources together
+sections = [
+    (wikipedia_vectors, {"source": "wikipedia", "quality": "high"}),
+    (arxiv_vectors, {"source": "arxiv", "quality": "high"}),
+    (github_vectors, {"source": "github", "quality": "medium"}),
+]
+
+pack_cvc_sections(sections, "combined.cvc", chunk_size=10_000)
+
+# Load only arXiv section (regardless of size or chunk alignment)
+arxiv_only = load_cvc_range("combined.cvc",
+                            section_key="source",
+                            section_value="arxiv")
+
+# Load all high-quality sections
+high_quality = load_cvc_range("combined.cvc",
+                              section_key="quality",
+                              section_value="high")
+```
+
+**Benefits:**
+- ✅ Works with any section sizes (no alignment needed)
+- ✅ Automatically handles chunk boundaries
+- ✅ Filters and extracts only the requested section data
+- ✅ Single simple API call
+
+### Chunk-Level Filtering
+
+For files packed with `chunk_metadata`, filter by chunk properties:
+
+```python
+# Load chunks by metadata (for files with chunk_metadata)
+vectors = load_cvc_range("embeddings.cvc", 
+                        metadata_key="batch_id", 
+                        metadata_value="batch_42")
+```
+
+### Manual Complex Filtering
+
+For complex multi-criteria queries:
+
+```python
+from decompressed import get_cvc_info, load_cvc_range
+
+info = get_cvc_info("embeddings.cvc")
+
+# Filter chunks by multiple criteria
+filtered_chunks = [
+    chunk['index'] 
+    for chunk in info['chunks'] 
+    if chunk.get('metadata') 
+    and chunk['metadata'].get('quality') == 'high'
+    and chunk['metadata'].get('date') >= '2024-03'
+]
+
+vectors = load_cvc_range("embeddings.cvc", chunk_indices=filtered_chunks)
+```
 
 ---
 
