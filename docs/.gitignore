@@ -1,0 +1,21 @@
+# Logs
+logs
+*.log
+
+# Runtime files
+node_modules/
+
+# Build output
+/dist
+/.cache
+
+# Environment files
+.env
+.env.*
+
+# IDE
+.vscode/
+.idea/
+
+# macOS
+.DS_Store
