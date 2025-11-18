@@ -1,10 +1,10 @@
 <div align="center">
-  <img src="decompressed_banner.svg?v=2" alt="Decompressed" width="100%">
+  <img src="decompressed_banner.svg?v=3" alt="Decompressed" width="100%">
   
   [![PyPI version](https://img.shields.io/pypi/v/decompressed)](https://pypi.org/project/decompressed/)
   [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
   
-  <p><em>GPU-native decompression library for vector embeddings and similarity search workloads</em></p>
+  <p><em>GPU-native vector compression library for embeddings and similarity search</em></p>
 </div>
 
 ---
@@ -17,44 +17,59 @@ pip install decompressed
 
 # With GPU support (Triton backend - vendor agnostic)
 pip install decompressed[gpu]
-
-# Development installation
-git clone https://github.com/Dev-ZC/Decompressed.git
-cd Decompressed
-pip install -e ".[dev]"
 ```
 
 ## Quick Start
 
+### Basic Usage
+
 ```python
 import numpy as np
+from decompressed import pack_cvc, load_cvc
+
+# Create embeddings
+embeddings = np.random.randn(100_000, 768).astype(np.float32)
+
+# Pack with compression (2× smaller with FP16)
+pack_cvc(embeddings, "embeddings.cvc", compression="fp16")
+
+# Load back
+vectors = load_cvc("embeddings.cvc")
+```
+
+### Section-Based Packing (Multiple Sources)
+
+```python
 from decompressed import pack_cvc_sections, load_cvc_range
 
-# Pack embeddings from different sources
+# Pack different sources together
 wikipedia = np.random.randn(10_000, 768).astype(np.float32)
 arxiv = np.random.randn(110_000, 768).astype(np.float32)
 
 pack_cvc_sections([
     (wikipedia, {"source": "wikipedia"}),
     (arxiv, {"source": "arxiv"}),
-], "embeddings.cvc")
+], "combined.cvc")
 
-# Load only arXiv embeddings
-arxiv_vectors = load_cvc_range("embeddings.cvc", 
-                              section_key="source", 
-                              section_value="arxiv")
-print(f"Loaded {arxiv_vectors.shape[0]:,} vectors")
+# Load only arXiv
+arxiv_only = load_cvc_range("combined.cvc", 
+                           section_key="source", 
+                           section_value="arxiv")
 ```
 
 ---
 
-## Why Decompressed?
+## API Reference
 
-- **Efficient storage**: 2-4× compression with FP16/INT8
-- **Fast GPU decompression**: Direct to GPU memory
-- **Flexible metadata**: Pack multiple sources with section metadata
-- **Selective loading**: Load only the data you need
-- **Simple API**: One-line filtering and loading
+| Function | Purpose | Arguments |
+|----------|---------|-----------|
+| [`pack_cvc`](#pack_cvc) | Pack single array with compression | `vectors`, `output_path`, `compression`, `chunk_size`, `chunk_metadata` |
+| [`pack_cvc_sections`](#pack_cvc_sections) | Pack multiple arrays with section metadata | `sections`, `output_path`, `compression`, `chunk_size` |
+| [`load_cvc`](#load_cvc) | Load entire file | `path`, `device`, `framework`, `backend` |
+| [`load_cvc_range`](#load_cvc_range) | Load specific chunks or sections | `path`, `chunk_indices`, `section_key`, `section_value`, `device`, `framework` |
+| [`load_cvc_chunked`](#load_cvc_chunked) | Streaming iterator for large files | `path`, `device`, `framework`, `backend` |
+| [`get_cvc_info`](#get_cvc_info) | Get file metadata | `path` |
+| [`get_available_backends`](#get_available_backends) | Check available GPU backends | None |
 
 ---
 
