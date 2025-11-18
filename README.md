@@ -1,10 +1,14 @@
-# Decompressed
+<div align="center">
+  <img src="decompressed_logo.svg" alt="Decompressed Logo" width="200">
+  <h1>Decompressed</h1>
+  
+  [![PyPI version](https://img.shields.io/pypi/v/decompressed)](https://pypi.org/project/decompressed/)
+  [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
+  
+  <p><em>GPU-native decompression library for vector embeddings and similarity search workloads</em></p>
+</div>
 
-[![PyPI version](https://img.shields.io/pypi/v/decompressed)](https://pypi.org/project/decompressed/)
-[![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
-
-Decompressed is a GPU-native decompression library for vector embeddings and similarity search workloads.  
-It provides a compact on-disk format (`.cvc`) and high-throughput decompression paths for CPU and GPU.
+---
 
 ## Installation
 
