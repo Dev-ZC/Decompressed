@@ -23,8 +23,8 @@ jobs:
         python -m pip install --upgrade pip
         pip install build twine
 
-    - name: Build package
-      run: python -m build
+    - name: Build package (source distribution only)
+      run: python -m build --sdist
 
     - name: Check distribution
       run: twine check dist/*
