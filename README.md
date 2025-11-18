@@ -1,13 +1,57 @@
 # Decompressed
- 
+
+[![PyPI version](https://img.shields.io/pypi/v/decompressed)](https://pypi.org/project/decompressed/)
+[![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
+
 Decompressed is a GPU-native decompression library for vector embeddings and similarity search workloads.  
 It provides a compact on-disk format (`.cvc`) and high-throughput decompression paths for CPU and GPU.
 
-The focus is:
+## Installation
 
-- Efficient storage for large embedding collections (FP16 and INT8).
-- Fast, streaming decompression directly into the target device.
-- Simple, minimal Python API suitable for production and research.
+```bash
+# Basic installation (CPU only)
+pip install decompressed
+
+# With GPU support (Triton backend - vendor agnostic)
+pip install decompressed[gpu]
+
+# Development installation
+git clone https://github.com/Dev-ZC/Decompressed.git
+cd Decompressed
+pip install -e ".[dev]"
+```
+
+## Quick Start
+
+```python
+import numpy as np
+from decompressed import pack_cvc_sections, load_cvc_range
+
+# Pack embeddings from different sources
+wikipedia = np.random.randn(10_000, 768).astype(np.float32)
+arxiv = np.random.randn(110_000, 768).astype(np.float32)
+
+pack_cvc_sections([
+    (wikipedia, {"source": "wikipedia"}),
+    (arxiv, {"source": "arxiv"}),
+], "embeddings.cvc")
+
+# Load only arXiv embeddings
+arxiv_vectors = load_cvc_range("embeddings.cvc", 
+                              section_key="source", 
+                              section_value="arxiv")
+print(f"Loaded {arxiv_vectors.shape[0]:,} vectors")
+```
+
+---
+
+## Why Decompressed?
+
+- **Efficient storage**: 2-4× compression with FP16/INT8
+- **Fast GPU decompression**: Direct to GPU memory
+- **Flexible metadata**: Pack multiple sources with section metadata
+- **Selective loading**: Load only the data you need
+- **Simple API**: One-line filtering and loading
 
 ---
 

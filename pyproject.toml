@@ -9,13 +9,14 @@ build-backend = "scikit_build_core.build"
 [project]
 name = "decompressed"
 version = "0.1.0"
-description = "Efficient vector compression for machine learning"
+description = "GPU-native vector compression and decompression library for embeddings and similarity search"
 authors = [
     {name = "Zaki Cole", email = "zakicole74@gmail.com"},
 ]
 readme = "README.md"
 requires-python = ">=3.8"
 license = {text = "Apache-2.0"}
+keywords = ["compression", "embeddings", "gpu", "machine-learning", "vector-database", "cuda", "triton", "fp16", "int8"]
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Intended Audience :: Developers",
@@ -123,7 +124,10 @@ addopts = "-v --cov=decompressed --cov-report=term-missing"
 
 [project.urls]
 Homepage = "https://github.com/Dev-ZC/Decompressed"
+Documentation = "https://github.com/Dev-ZC/Decompressed#readme"
+Repository = "https://github.com/Dev-ZC/Decompressed"
 "Bug Tracker" = "https://github.com/Dev-ZC/Decompressed/issues"
+Changelog = "https://github.com/Dev-ZC/Decompressed/releases"
 
 [project.scripts]
 decompressed = "decompressed.cli:main"
