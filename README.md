@@ -1,6 +1,5 @@
 <div align="center">
-  <img src="decompressed_logo.svg" alt="Decompressed Logo" width="200">
-  <h1>Decompressed</h1>
+  <img src="decompressed_banner.svg" alt="Decompressed" width="100%">
   
   [![PyPI version](https://img.shields.io/pypi/v/decompressed)](https://pypi.org/project/decompressed/)
   [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
