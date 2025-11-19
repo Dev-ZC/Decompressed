@@ -153,6 +153,7 @@ End-to-end performance benchmarks comparing Decompressed against traditional sto
 ### Key Insights
 
 **🚀 INT8 Decompressed wins decisively (2.2× faster than PyTorch INT8)**
+- Major caveat: PyTorch only has a load function optimized for FP16 (torch.load(f).cuda()). The INT8 implementation in the benchmark uses 'torch.quantize_per_tensor' with manual CPU-to-GPU transfer
 - PyTorch dequantizes on CPU → bottleneck
 - Decompressed dequantizes on GPU → full throughput
 - Same storage footprint (0.38 GB), dramatically better performance
