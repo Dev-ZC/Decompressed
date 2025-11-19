@@ -76,28 +76,59 @@ arxiv_only = load_cvc_range("combined.cvc",
 ## Key Features
 
 - **GPU-native decompression**
-
   - Direct decompression into GPU memory.
   - Triton-based kernels for vendor-agnostic GPU support (NVIDIA, AMD, Intel).
   - CUDA kernels planned as the highest-performance path on NVIDIA.
-
+  - [File format details](format.md)
 - **Multiple compression schemes**
-
   - **FP16**: 2× compression vs FP32 with minimal accuracy loss.
   - **INT8**: 4× compression vs FP32 via linear quantization.
 
 - **Chunked, streaming format**
-
   - `.cvc` format is chunked for efficient storage and streaming.
   - **Chunked decompression API**: Load and decompress specific chunks on-demand.
   - Load datasets that do not fit into host RAM via `load_cvc_chunked()`.
   - Per-chunk compression parameters.
 
 - **Framework-agnostic integration**
-
   - Python API supports NumPy, PyTorch, and CuPy.
   - CPU decompression via Python or C++ backend.
   - GPU decompression via Triton backend, with CUDA backend under development.
+
+---
+
+## How It Works
+
+Decompressed uses a custom `.cvc` (Compressed Vector Collection) file format designed for:
+- **Efficient storage**: 2-4× smaller than raw FP32 embeddings
+- **GPU-native decompression**: Directly load compressed vectors into GPU memory
+- **Streaming access**: Retrieve specific sections without loading entire files
+
+### File Format Overview
+
+The `.cvc` format is a binary container with:
+1. **Header**: Metadata about compression, dimensions, and chunk structure
+2. **Chunked payloads**: Vectors compressed in fixed-size chunks (default: 100k vectors)
+3. **Section metadata**: Custom key-value pairs for filtering during loading
+
+```text
++-------------------+-------------------+-------------------+
+| Header (JSON)     | Chunk 1 Metadata  | Chunk 1 Payload   |
+| (file version,    | (rows, min/scale  | (compressed bytes)|
+| compression type, | for INT8, custom  |                   |
+| dimensions, etc.) | key-values)       |                   |
++-------------------+-------------------+-------------------+
+| Chunk 2 Metadata  | Chunk 2 Payload   | ... (repeats)     |
++-------------------+-------------------+-------------------+
+```
+
+### Key Benefits
+- **Direct GPU loading**: Bypass CPU decompression bottlenecks
+- **Selective access**: Load only relevant sections/chunks
+- **Framework agnostic**: Works with NumPy, PyTorch, and CuPy
+- **Vendor support**: Runs on NVIDIA, AMD, and Intel GPUs via Triton
+
+For complete file specification, see [format.md](format.md)
 
 ---
 
@@ -832,4 +863,5 @@ If you use Decompressed in your research, please consider citing:
   year   = {2025},
   url    = {https://github.com/Dev-ZC/Decompressed}
 }
+
 ```
