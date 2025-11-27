@@ -10,7 +10,7 @@ from .packer import pack_cvc as _pack_cvc, pack_cvc_sections as _pack_cvc_sectio
 _loader = CVCLoader()
 
 
-def load_cvc(path, device="cpu", framework="torch", backend="auto"):
+def load_cvc(path, device="cpu", framework="torch", backend="auto", on_corruption="raise", fill_value=0.0):
     """
     Load a .cvc file into a GPU or CPU array.
     
@@ -24,6 +24,11 @@ def load_cvc(path, device="cpu", framework="torch", backend="auto"):
             - "cpp": C++ native (CPU only, fast)
             - "cuda": CUDA native (GPU only, fastest, NVIDIA only)
             - "triton": Triton kernels (GPU only, fast, vendor-agnostic)
+        on_corruption: How to handle corrupted chunks - "raise", "skip", or "warn"
+            - "raise": Raise CorruptedChunkError (default, safest)
+            - "skip": Fill corrupted chunks with fill_value and continue
+            - "warn": Same as skip but also log warnings
+        fill_value: Value to use for corrupted chunks when on_corruption="skip" or "warn"
     
     Returns:
         Array of vectors (numpy, torch, or cupy depending on device/framework)
@@ -37,11 +42,15 @@ def load_cvc(path, device="cpu", framework="torch", backend="auto"):
         
         >>> # GPU loading with Triton (vendor-agnostic)
         >>> vectors = load_cvc("embeddings.cvc", device="cuda", backend="triton")
+        
+        >>> # Graceful degradation for corrupted files
+        >>> vectors = load_cvc("embeddings.cvc", on_corruption="skip", fill_value=0.0)
     """
-    return _loader.load(path, device=device, framework=framework, backend=backend)
+    return _loader.load(path, device=device, framework=framework, backend=backend, 
+                        on_corruption=on_corruption, fill_value=fill_value)
 
 
-def pack_cvc(vectors, output_path, compression="fp16", chunk_size=100000, chunk_metadata=None):
+def pack_cvc(vectors, output_path, compression="fp16", chunk_size=100000, chunk_metadata=None, mmap_optimized=False):
     """
     Pack numpy array of vectors into .cvc compressed format.
     
@@ -52,17 +61,23 @@ def pack_cvc(vectors, output_path, compression="fp16", chunk_size=100000, chunk_
         chunk_size: Number of vectors per chunk
         chunk_metadata: Optional list of dicts with metadata per chunk.
                        Must have length equal to the number of chunks.
+        mmap_optimized: If True, align chunks to 4KB boundaries for zero-copy mmap access.
+                       Adds ~5-10% file size but enables 50-90% memory reduction via mmap.
     
     Examples:
         >>> import numpy as np
         >>> embeddings = np.random.randn(10000, 768).astype(np.float32)
         >>> pack_cvc(embeddings, "embeddings.cvc", compression="fp16")
         
+        >>> # With mmap optimization for large files
+        >>> pack_cvc(embeddings, "embeddings.cvc", mmap_optimized=True)
+        
         >>> # With custom chunk metadata
         >>> metadata = [{"source": "batch1"}, {"source": "batch2"}]
         >>> pack_cvc(embeddings, "embeddings.cvc", chunk_size=5000, chunk_metadata=metadata)
     """
-    return _pack_cvc(vectors, output_path, compression=compression, chunk_size=chunk_size, chunk_metadata=chunk_metadata)
+    return _pack_cvc(vectors, output_path, compression=compression, chunk_size=chunk_size, 
+                     chunk_metadata=chunk_metadata, mmap_optimized=mmap_optimized)
 
 
 def pack_cvc_sections(sections, output_path, compression="fp16", chunk_size=100000):

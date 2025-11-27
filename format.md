@@ -1,32 +1,47 @@
 # CVC File Format Specification
- 
+
+**Version 2.0** - Multi-Column Storage, Zero-Copy, and GPU Optimization
+
 The `.cvc` (Compressed Vector Collection) format is a binary container for large collections of dense embeddings.  
 It is designed to support:
 
-- Efficient on-disk storage via FP16 and INT8 compression.
-- High-throughput, streaming decompression on CPU and GPU.
-- Direct integration with the Decompressed Python/C++ backends.
+- **Multi-column storage**: Heterogeneous tensors in one file (v2.0)
+- **Efficient compression**: FP16 (2×) and INT8 (4×) compression
+- **GPU-native decompression**: 20-80× faster than CPU
+- **Zero-copy memory mapping**: 50-90% memory reduction
+- **Selective column loading**: Load 1 of N columns
+- **Section metadata**: Multi-source data with filtering
+- **Streaming/chunked**: Independent chunk decompression
 
-This document specifies the format and how it maps to the decompression implementations.
+This document specifies both v1.x (single-column) and v2.0 (multi-column) formats.
 
 ---
 
-## Design goals
+## Design Goals
+
+- **Multi-modal ready** (v2.0)  
+  Store text, image, audio embeddings in one file with heterogeneous dimensions
 
 - **GPU-native**  
-  Decompression can occur directly into GPU memory (Triton kernels, CUDA kernels under development) without intermediate CPU buffers.
+  Triton and CUDA kernels decompress directly into GPU memory
+
+- **Zero-copy access**  
+  Memory-mapped files with page alignment for minimal memory footprint
+
+- **Selective loading**  
+  Load 1 of 10 columns without reading entire file (10× I/O reduction)
 
 - **Streaming / chunked**  
-  Large datasets are split into independently decompressible chunks, enabling streaming and partial loading.
+  Independently decompressible chunks for partial loading
 
 - **Multiple compression schemes**  
-  Chunks can use FP16 or INT8; the file-level header records defaults while chunk metadata can override them.
+  Per-column FP16, INT8, or no compression
 
-- **Metadata-rich and extensible**  
-  A JSON header encodes all required metadata and can be extended in a backward-compatible fashion.
+- **Metadata-rich**  
+  JSON header with schema, sections, and extensible metadata
 
 - **Framework-agnostic**  
-  The format itself is not tied to any framework. The Decompressed library provides NumPy, PyTorch, and CuPy bindings.
+  Works with NumPy, PyTorch, CuPy
 
 ---
 
@@ -367,15 +382,109 @@ Backends should treat unknown `compression` values as unsupported and raise a cl
 
 ---
 
-## Version history
+## Format Versions
 
-- **v0.1.0**
-  - Initial specification with FP16 and INT8 compression.
-  - JSON metadata header.
-  - Chunked storage format.
+### v1.x (Single-Column Format)
+
+Original format with single vector dimension:
+- One dimension per file
+- Global compression setting
+- Section metadata support
+
+### v2.0 (Multi-Column Format) 🆕
+
+Extended format for heterogeneous data:
+```json
+{
+  "format_type": "columnar",
+  "num_vectors": 1000000,
+  "columns": [
+    {
+      "name": "text",
+      "dimension": 768,
+      "dtype": "float32",
+      "compression": "fp16"
+    },
+    {
+      "name": "image",
+      "dimension": 512,
+      "dtype": "float32",
+      "compression": "int8"
+    },
+    {
+      "name": "doc_id",
+      "dimension": 1,
+      "dtype": "int32",
+      "compression": "none"
+    }
+  ],
+  "chunks": [
+    {
+      "rows": 100000,
+      "columns": {
+        "text": {"offset": 0, "size": 153600000, "compression": "fp16"},
+        "image": {"offset": 153600000, "size": 51200000, "compression": "int8", "min": -1.0, "scale": 0.00784},
+        "doc_id": {"offset": 204800000, "size": 400000, "compression": "none"}
+      }
+    }
+  ]
+}
+```
+
+**Key differences from v1.x:**
+- `format_type: "columnar"` indicates v2.0
+- `columns` array defines schema for each column
+- Per-column compression settings
+- Chunk payload contains multiple columns at specified offsets
+- Supports heterogeneous dimensions and data types
+
+### v2.0 with MMap Optimization
+
+Files packed with `mmap_optimized=True` add:
+```json
+{
+  "mmap_optimized": true,
+  "chunks": [
+    {
+      "file_offset": 4096,  // Pre-computed file position
+      "rows": 100000,
+      // ...
+    }
+  ]
+}
+```
+
+**Benefits:**
+- 4KB page-aligned chunks
+- Direct memory-mapped access
+- ~5% file size increase
+- 50-90% memory reduction during loading
+
+---
+
+## Version History
+
+- **v2.0** (November 2024)
+  - Multi-column storage with heterogeneous tensors
+  - Per-column compression settings
+  - Schema introspection
+  - Memory-mapped file support with page alignment
+  - Section metadata for multi-source data
+  - GPU-accelerated columnar loading
+
+- **v1.0** (2024)
+  - Format versioning (major.minor)
+  - Backward compatibility with v0.x
+  - Section metadata support
+  - GPU backend integration
+
+- **v0.1.0** (Initial)
+  - Initial specification with FP16 and INT8 compression
+  - JSON metadata header
+  - Chunked storage format
 
 ---
 
 **License**: Apache 2.0  
-**Specification version**: 0.1.0  
-**Last updated**: 2025‑11‑17
+**Specification version**: 2.0  
+**Last updated**: 2024-11-27

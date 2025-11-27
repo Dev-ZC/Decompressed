@@ -60,8 +60,9 @@ test_*.cvc
 token
 .modal/
 
-# Deployment scripts (local only)
+# Deployment and release scripts (local only)
 deploy.sh
+release.sh
 
 # OS
 .DS_Store

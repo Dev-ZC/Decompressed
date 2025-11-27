@@ -10,12 +10,28 @@ def compress_fp16(vectors: np.ndarray) -> bytes:
 
 
 def compress_int8(vectors: np.ndarray) -> tuple[bytes, float, float]:
-    """Compress vectors to INT8 format with quantization."""
-    minv = float(np.min(vectors))
-    maxv = float(np.max(vectors))
+    """
+    Compress vectors to INT8 format with quantization.
     
-    scale = (maxv - minv) / 255.0 if maxv != minv else 1.0
+    This function is deterministic: given the same input, it will always
+    produce the same output bytes, which is critical for:
+    - CI/CD pipelines
+    - Data versioning
+    - Caching and deduplication
+    """
+    # Use deterministic reduction and consistent precision
+    minv = float(np.min(vectors, axis=None, keepdims=False))
+    maxv = float(np.max(vectors, axis=None, keepdims=False))
     
-    quantized = np.round((vectors - minv) / scale).astype(np.uint8)
+    # Round to float32 for consistency across platforms/runs
+    minv = np.float32(minv)
+    maxv = np.float32(maxv)
     
-    return quantized.tobytes(), minv, scale
+    # Compute scale with consistent precision
+    scale = np.float32((maxv - minv) / 255.0) if maxv != minv else np.float32(1.0)
+    
+    # Deterministic quantization using float32 precision
+    quantized = np.round((vectors.astype(np.float32) - minv) / scale).astype(np.uint8)
+    
+    # Convert to native Python float for JSON consistency
+    return quantized.tobytes(), float(minv), float(scale)

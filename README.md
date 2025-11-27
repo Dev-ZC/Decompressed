@@ -22,6 +22,8 @@ pip install decompressed[gpu]
 
 ## Quick Start
 
+📚 **[See full Quick Start guide →](QUICKSTART.md)**
+
 ### Basic Usage
 
 ```python
@@ -36,6 +38,28 @@ pack_cvc(embeddings, "embeddings.cvc", compression="fp16")
 
 # Load back
 vectors = load_cvc("embeddings.cvc")
+```
+
+### Multi-Column Storage (v2.0) 🆕
+
+```python
+from decompressed import pack_cvc_columns, load_cvc_columns
+
+# Pack multiple heterogeneous tensors in one file
+data = {
+    "text": text_embeddings,      # (1M, 768)
+    "image": image_embeddings,    # (1M, 512)  
+    "doc_id": doc_ids             # (1M,) scalar
+}
+
+pack_cvc_columns(data, "multi_modal.cvc", compressions={
+    "text": "fp16",
+    "image": "int8",
+    "doc_id": "none"
+})
+
+# Load only specific columns (2-5× faster)
+text_only = load_cvc_columns("multi_modal.cvc", columns=["text"])
 ```
 
 ### Section-Based Packing (Multiple Sources)
@@ -56,6 +80,66 @@ pack_cvc_sections([
 arxiv_only = load_cvc_range("combined.cvc", 
                            section_key="source", 
                            section_value="arxiv")
+```
+
+### Combining Sections + Columns 🔥
+
+```python
+from decompressed import pack_cvc_sections_columnar, load_cvc_columns
+
+# Multi-modal data from multiple sources
+sections = [
+    ({"text": wiki_text, "image": wiki_img}, {"source": "wikipedia"}),
+    ({"text": arxiv_text, "image": arxiv_img}, {"source": "arxiv"})
+]
+
+pack_cvc_sections_columnar(sections, "combined.cvc")
+
+# Load with both filters (section + column)
+arxiv_text = load_cvc_columns(
+    "combined.cvc",
+    columns=["text"],
+    section_key="source",
+    section_value="arxiv"
+)
+```
+
+### Column Manipulation (v2.1) 🆕
+
+```python
+from decompressed import add_column, update_column, delete_column, rename_column
+
+# Add new column to existing file
+new_audio = np.random.randn(1_000_000, 256).astype(np.float32)
+add_column("multi_modal.cvc", "audio", new_audio, compression="fp16")
+
+# Update existing column
+new_text = np.random.randn(1_000_000, 768).astype(np.float32)
+update_column("multi_modal.cvc", "text", new_text)
+
+# Delete column
+delete_column("multi_modal.cvc", "audio")
+
+# Rename column
+rename_column("multi_modal.cvc", "text", "text_embeddings")
+```
+
+### Zero-Copy Memory Mapping (v2.2) 🆕
+
+```python
+from decompressed import pack_cvc, MMapCVCLoader
+
+# Pack with page alignment for mmap
+embeddings = np.random.randn(10_000_000, 768).astype(np.float32)
+pack_cvc(embeddings, "large.cvc", mmap_optimized=True)
+
+# Zero-copy loading (50-90% less memory)
+with MMapCVCLoader("large.cvc") as loader:
+    info = loader.get_info()
+    print(f"Vectors: {info['num_vectors']:,}, Memory-mapped: {info['mmap_optimized']}")
+    
+    # Load single chunk without loading entire file
+    chunk0 = loader.load_chunk(0)
 ```
 
 ### Deploy Your Own GPU Demo
@@ -82,6 +166,8 @@ This deploys:
 
 ## API Reference
 
+### v1.x API (Single-Column)
+
 | Function | Purpose | Arguments |
 |----------|---------|-----------|
 | [`pack_cvc`](#pack_cvc) | Pack single array with compression | `vectors`, `output_path`, `compression`, `chunk_size`, `chunk_metadata` |
@@ -89,7 +175,37 @@ This deploys:
 | [`load_cvc`](#load_cvc) | Load entire file | `path`, `device`, `framework`, `backend` |
 | [`load_cvc_range`](#load_cvc_range) | Load specific chunks or sections | `path`, `chunk_indices`, `section_key`, `section_value`, `device`, `framework` |
 | [`load_cvc_chunked`](#load_cvc_chunked) | Streaming iterator for large files | `path`, `device`, `framework`, `backend` |
-| [`get_cvc_info`](#get_cvc_info) | Get file metadata | `path` |
+
+### v2.0 API (Multi-Column) 🆕
+
+| Function | Purpose | Arguments |
+|----------|---------|-----------|
+| [`pack_cvc_columns`](#pack_cvc_columns) | Pack multi-column data | `data`, `output_path`, `compressions`, `chunk_size` |
+| [`pack_cvc_sections_columnar`](#pack_cvc_sections_columnar) | Pack multi-column data with sections | `sections`, `output_path`, `compressions`, `chunk_size` |
+| [`load_cvc_columns`](#load_cvc_columns) | Load with selective columns | `path`, `columns`, `device`, `framework`, `section_key`, `section_value` |
+
+### v2.1 API (Column Manipulation) 🆕
+
+| Function | Purpose | Arguments |
+|----------|---------|-----------|
+| `add_column` | Add column to existing file | `path`, `column_name`, `data`, `compression`, `output_path` |
+| `update_column` | Update existing column | `path`, `column_name`, `data`, `compression`, `output_path` |
+| `delete_column` | Delete column from file | `path`, `column_name`, `output_path` |
+| `rename_column` | Rename column | `path`, `old_name`, `new_name`, `output_path` |
+| `list_columns` | List all columns with metadata | `path` |
+
+### v2.2 API (Zero-Copy MMap) 🆕
+
+| Class/Function | Purpose | Usage |
+|---------|---------|-------|
+| `MMapCVCLoader` | Memory-mapped zero-copy loader | Context manager for mmap access |
+| `pack_cvc(..., mmap_optimized=True)` | Pack with page alignment | Enables zero-copy loading |
+
+### Utilities
+
+| Function | Purpose | Arguments |
+|----------|---------|-----------|
+| [`get_cvc_info`](#get_cvc_info) | Get file metadata & schema (v1.x and v2.x) | `path` |
 | [`get_available_backends`](#get_available_backends) | Check available GPU backends | None |
 
 ---

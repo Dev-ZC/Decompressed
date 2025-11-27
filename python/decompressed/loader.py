@@ -4,11 +4,17 @@ import json
 import numpy as np
 from pathlib import Path
 import warnings
+import zlib
 
 from .backends import PythonBackend, CPPBackend, CUDABackend, TritonBackend
 from .utils import validate_backend_availability, select_backend, check_cuda_pytorch_compatibility
 
 HEADER_MAGIC = b"CVCF"
+
+
+class CorruptedChunkError(Exception):
+    """Raised when chunk checksum validation fails."""
+    pass
 
 
 class CVCLoader:
@@ -54,7 +60,7 @@ class CVCLoader:
             'triton': self.triton_backend.is_available(),
         }
     
-    def load(self, path, device="cpu", framework="torch", backend="auto"):
+    def load(self, path, device="cpu", framework="torch", backend="auto", on_corruption="raise", fill_value=0.0):
         """
         Load a .cvc file into a GPU or CPU array.
         
@@ -68,6 +74,11 @@ class CVCLoader:
                 - "cpp": C++ native (CPU only, fast)
                 - "cuda": CUDA native (GPU only, fastest, NVIDIA only)
                 - "triton": Triton kernels (GPU only, fast, vendor-agnostic)
+            on_corruption: How to handle corrupted chunks - "raise", "skip", or "warn"
+                - "raise": Raise CorruptedChunkError (default, safest)
+                - "skip": Fill corrupted chunks with fill_value and continue
+                - "warn": Same as skip but also log warnings
+            fill_value: Value to use for corrupted chunks when on_corruption="skip" or "warn"
         
         Returns:
             Array of vectors (numpy, torch, or cupy depending on device/framework)
@@ -81,6 +92,7 @@ class CVCLoader:
             dim = header["dimension"]
             compression = header["compression"]
             chunks_meta = header["chunks"]
+            format_version = header.get('_format_version', (1, 0))
             
             # Allocate output array
             arr = self._allocate_output_array(n_vectors, dim, device, framework)
@@ -106,10 +118,44 @@ class CVCLoader:
             
             # Decompress chunks
             offset = 0
-            for chunk in chunks_meta:
+            is_v1 = format_version[0] >= 1
+            
+            for chunk_idx, chunk in enumerate(chunks_meta):
                 chunk_len = int.from_bytes(f.read(4), "little")
+                
+                # v1.x files have checksums, v0.x files don't
+                if is_v1:
+                    expected_checksum = int.from_bytes(f.read(4), "little")
+                
                 payload = f.read(chunk_len)
                 rows = chunk["rows"]
+                
+                # Validate checksum (only for v1.x)
+                if is_v1:
+                    actual_checksum = zlib.crc32(payload) & 0xFFFFFFFF
+                    if actual_checksum != expected_checksum:
+                        error_msg = (
+                            f"Chunk {chunk_idx} corrupted. "
+                            f"Expected CRC32: {expected_checksum:08x}, "
+                            f"Got: {actual_checksum:08x}. "
+                            f"Vectors {offset} to {offset+rows} affected."
+                        )
+                        
+                        if on_corruption == "raise":
+                            raise CorruptedChunkError(error_msg)
+                        elif on_corruption in ["skip", "warn"]:
+                            if on_corruption == "warn":
+                                warnings.warn(f"⚠️  {error_msg} Filling with {fill_value}", RuntimeWarning)
+                            # Fill corrupted chunk with fill_value
+                            if device == "cpu":
+                                arr[offset:offset+rows, :] = fill_value
+                            else:
+                                if framework == "torch":
+                                    arr[offset:offset+rows, :] = fill_value
+                                elif framework == "cupy":
+                                    arr[offset:offset+rows, :] = fill_value
+                            offset += rows
+                            continue
                 
                 # Decompress chunk using selected backend
                 if use_backend in ["cuda", "triton"]:
@@ -138,14 +184,61 @@ class CVCLoader:
         return arr
     
     def _read_header(self, f):
-        """Read and parse CVC file header."""
+        """Read and parse CVC file header with version detection."""
         magic = f.read(4)
         if magic != HEADER_MAGIC:
             raise ValueError("Not a valid .cvc file")
         
-        header_len = int.from_bytes(f.read(4), "little")
-        header = json.loads(f.read(header_len))
-        return header
+        # Try to read version bytes
+        version_bytes = f.read(4)
+        
+        # Check if this is a v1.x file (has version bytes) or v0.x (legacy)
+        # v1.x files have version bytes before header_len
+        # v0.x files have header_len immediately after magic
+        
+        # Try to parse as v1.x first
+        if len(version_bytes) == 4:
+            major = int.from_bytes(version_bytes[:2], "little")
+            minor = int.from_bytes(version_bytes[2:4], "little")
+            
+            # More robust check: v1.x/v2.x files have major=1-2, minor=0 (for now)
+            # v0.x files have header_len in this position (typically 100-10000)
+            # So if major is 1-10 and minor is 0-100, likely versioned format
+            if 1 <= major <= 10 and 0 <= minor <= 100:
+                # This is v1.x or v2.x format
+                if major > 2:
+                    raise ValueError(
+                        f"Unsupported CVC format version {major}.{minor}. "
+                        f"This library supports v1.x and v2.x only. Please upgrade decompressed library."
+                    )
+                
+                # Read header for v1.x/v2.x
+                header_len = int.from_bytes(f.read(4), "little")
+                header = json.loads(f.read(header_len))
+                header['_format_version'] = (major, minor)
+                return header
+            else:
+                # Likely v0.x - version_bytes is actually header_len
+                # Reinterpret version_bytes as header_len (little-endian uint32)
+                header_len = int.from_bytes(version_bytes, "little")
+                
+                # Validate header_len is reasonable for v0.x
+                if header_len > 100_000_000:  # Sanity check
+                    raise ValueError(f"Invalid header length: {header_len}")
+                
+                warnings.warn(
+                    "Loading legacy v0.x CVC file without format versioning. "
+                    "Consider upgrading with: from decompressed import upgrade_cvc; "
+                    "upgrade_cvc('old.cvc', 'new.cvc')",
+                    DeprecationWarning,
+                    stacklevel=3
+                )
+                
+                header = json.loads(f.read(header_len))
+                header['_format_version'] = (0, 1)  # Assume v0.1
+                return header
+        else:
+            raise ValueError("Truncated file: could not read version/header_len")
     
     def _allocate_output_array(self, n_vectors, dim, device, framework):
         """Allocate output array based on device and framework."""
@@ -180,26 +273,71 @@ class CVCLoader:
             
         Returns:
             dict: File metadata containing:
+                - format_type: "single" or "columnar" (v2.0+)
                 - num_vectors: Total number of vectors
-                - dimension: Vector dimensionality
+                - dimension: Vector dimensionality (single-column only)
+                - columns: List of column schemas (columnar only)
                 - compression: Default compression scheme
                 - chunks: List of chunk metadata
                 - num_chunks: Number of chunks
+                - file_size: File size in bytes
+                - sections: Section metadata (if present)
         """
         path = Path(path)
+        file_size = path.stat().st_size
+        
         with open(path, "rb") as f:
             header = self._read_header(f)
-            header['num_chunks'] = len(header['chunks'])
-            return {
+            
+            # Detect format type
+            format_type = header.get("format_type", "single")
+            
+            # Build common metadata
+            result = {
+                "format_type": format_type,
                 "num_vectors": header["num_vectors"],
-                "dimension": header["dimension"],
-                "compression": header["compression"],
-                "chunks": [
-                    {"index": i, "rows": chunk["rows"], "metadata": chunk.get("metadata")} 
-                    for i, chunk in enumerate(header["chunks"])
-                ],
-                "num_chunks": len(header['chunks'])
+                "num_chunks": len(header["chunks"]),
+                "file_size": file_size,
             }
+            
+            # Add format-specific metadata
+            if format_type == "columnar":
+                # Multi-column format (v2.0+)
+                result["columns"] = header.get("columns", [])
+                
+                # Include section info if present
+                if "sections" in header:
+                    result["sections"] = header["sections"]
+                
+                # Chunk metadata (simplified for columnar)
+                result["chunks"] = [
+                    {
+                        "index": i,
+                        "rows": chunk["rows"],
+                        "columns": list(chunk.get("columns", {}).keys())
+                    }
+                    for i, chunk in enumerate(header["chunks"])
+                ]
+            else:
+                # Single-column format (v1.x)
+                result["dimension"] = header["dimension"]
+                result["compression"] = header["compression"]
+                
+                # Include section info if present
+                if "sections" in header:
+                    result["sections"] = header["sections"]
+                
+                # Chunk metadata (detailed)
+                result["chunks"] = [
+                    {
+                        "index": i,
+                        "rows": chunk["rows"],
+                        "metadata": chunk.get("metadata")
+                    }
+                    for i, chunk in enumerate(header["chunks"])
+                ]
+            
+            return result
     
     def load_chunks(self, path, chunk_indices=None, device="cpu", framework="torch", backend="auto"):
         """
@@ -255,10 +393,20 @@ class CVCLoader:
             for chunk_idx in range(len(chunks_meta)):
                 chunk = chunks_meta[chunk_idx]
                 chunk_len = int.from_bytes(f.read(4), "little")
+                expected_checksum = int.from_bytes(f.read(4), "little")
                 
                 if chunk_idx in chunk_indices:
                     # Read and decompress this chunk
                     payload = f.read(chunk_len)
+                    
+                    # Validate checksum
+                    actual_checksum = zlib.crc32(payload) & 0xFFFFFFFF
+                    if actual_checksum != expected_checksum:
+                        raise CorruptedChunkError(
+                            f"Chunk {chunk_idx} corrupted. "
+                            f"Expected CRC32: {expected_checksum:08x}, "
+                            f"Got: {actual_checksum:08x}"
+                        )
                     rows = chunk["rows"]
                     
                     # Allocate output array for this chunk

@@ -4,13 +4,16 @@ import json
 import numpy as np
 from pathlib import Path
 import math
+import zlib
 
 from .compress import compress_fp16, compress_int8
 
 HEADER_MAGIC = b"CVCF"
+FORMAT_VERSION_MAJOR = 1
+FORMAT_VERSION_MINOR = 0
 
 
-def pack_cvc(vectors, output_path, compression="fp16", chunk_size=100000, chunk_metadata=None):
+def pack_cvc(vectors, output_path, compression="fp16", chunk_size=100000, chunk_metadata=None, mmap_optimized=False):
     """
     Pack numpy array of vectors into .cvc compressed format.
     
@@ -20,6 +23,7 @@ def pack_cvc(vectors, output_path, compression="fp16", chunk_size=100000, chunk_
         compression: "fp16" or "int8"
         chunk_size: Number of vectors per chunk
         chunk_metadata: Optional list of dicts with metadata per chunk
+        mmap_optimized: If True, align chunks to 4KB boundaries for mmap efficiency
     """
     if compression not in ["fp16", "int8"]:
         raise ValueError(f"Unknown compression: {compression}. Use 'fp16' or 'int8'")
@@ -66,19 +70,57 @@ def pack_cvc(vectors, output_path, compression="fp16", chunk_size=100000, chunk_
         "compression": compression,
         "chunks": chunks_meta
     }
-    header_bytes = json.dumps(header).encode('utf-8')
+    # Deterministic JSON serialization for reproducible file bytes
+    header_bytes = json.dumps(header, sort_keys=True, separators=(',', ':')).encode('utf-8')
     header_len = len(header_bytes)
     
-    # Write file
+    # Write file with format version
     output_path = Path(output_path)
+    page_size = 4096 if mmap_optimized else 1  # 4KB page alignment for mmap
+    
     with open(output_path, "wb") as f:
         f.write(HEADER_MAGIC)
+        f.write(FORMAT_VERSION_MAJOR.to_bytes(2, byteorder='little'))
+        f.write(FORMAT_VERSION_MINOR.to_bytes(2, byteorder='little'))
         f.write(header_len.to_bytes(4, byteorder='little'))
         f.write(header_bytes)
         
-        for payload in chunk_payloads:
+        # Pad header to page boundary if mmap_optimized
+        if mmap_optimized:
+            current_pos = f.tell()
+            padding = (page_size - (current_pos % page_size)) % page_size
+            if padding > 0:
+                f.write(b'\x00' * padding)
+        
+        # Write chunks (with optional alignment)
+        for idx, payload in enumerate(chunk_payloads):
+            if mmap_optimized:
+                # Record file offset for mmap access
+                chunks_meta[idx]["file_offset"] = f.tell()
+            
+            # Compute CRC32 checksum for data integrity
+            checksum = zlib.crc32(payload) & 0xFFFFFFFF
             f.write(len(payload).to_bytes(4, byteorder='little'))
+            f.write(checksum.to_bytes(4, byteorder='little'))
             f.write(payload)
+            
+            # Pad to next page boundary if mmap_optimized
+            if mmap_optimized and idx < len(chunk_payloads) - 1:  # Don't pad last chunk
+                current_pos = f.tell()
+                padding = (page_size - (current_pos % page_size)) % page_size
+                if padding > 0:
+                    f.write(b'\x00' * padding)
+    
+    # If mmap_optimized, rewrite header with file offsets
+    if mmap_optimized:
+        header["mmap_optimized"] = True
+        header_bytes = json.dumps(header, sort_keys=True, separators=(',', ':')).encode('utf-8')
+        header_len = len(header_bytes)
+        
+        with open(output_path, "r+b") as f:
+            f.seek(8)  # Skip magic and version
+            f.write(header_len.to_bytes(4, byteorder='little'))
+            f.write(header_bytes)
 
 
 def pack_cvc_sections(sections, output_path, compression="fp16", chunk_size=100000):
@@ -189,16 +231,22 @@ def pack_cvc_sections(sections, output_path, compression="fp16", chunk_size=1000
         "sections": section_info,
         "chunks": chunks_meta
     }
-    header_bytes = json.dumps(header).encode('utf-8')
+    # Deterministic JSON serialization for reproducible file bytes
+    header_bytes = json.dumps(header, sort_keys=True, separators=(',', ':')).encode('utf-8')
     header_len = len(header_bytes)
     
-    # Write file
+    # Write file with format version
     output_path = Path(output_path)
     with open(output_path, "wb") as f:
         f.write(HEADER_MAGIC)
+        f.write(FORMAT_VERSION_MAJOR.to_bytes(2, byteorder='little'))
+        f.write(FORMAT_VERSION_MINOR.to_bytes(2, byteorder='little'))
         f.write(header_len.to_bytes(4, byteorder='little'))
         f.write(header_bytes)
         
         for payload in chunk_payloads:
+            # Compute CRC32 checksum for data integrity
+            checksum = zlib.crc32(payload) & 0xFFFFFFFF
             f.write(len(payload).to_bytes(4, byteorder='little'))
+            f.write(checksum.to_bytes(4, byteorder='little'))
             f.write(payload)
