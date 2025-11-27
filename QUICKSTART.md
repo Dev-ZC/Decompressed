@@ -48,7 +48,7 @@ vectors_gpu = load_cvc("embeddings.cvc", device="cuda")
 
 ---
 
-## 2. Multi-Column Storage (v2.0)
+## 2. Multi-Column Storage
 
 ### Pack heterogeneous data
 
@@ -90,7 +90,7 @@ text_and_image = load_cvc_columns(
 
 ---
 
-## 3. Column Manipulation (v2.1)
+## 3. Column Manipulation
 
 ### Add, update, delete columns
 
@@ -116,7 +116,7 @@ rename_column("multi_modal.cvc", "text", "text_embeddings")
 
 ---
 
-## 4. Memory-Mapped Loading (v2.2)
+## 4. Memory-Mapped Loading
 
 ### Zero-copy access for large files
 

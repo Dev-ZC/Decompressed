@@ -104,7 +104,7 @@ arxiv_text = load_cvc_columns(
 )
 ```
 
-### Column Manipulation (v2.1) 🆕
+### Column Manipulation 🆕
 
 ```python
 from decompressed import add_column, update_column, delete_column, rename_column
@@ -124,7 +124,7 @@ delete_column("multi_modal.cvc", "audio")
 rename_column("multi_modal.cvc", "text", "text_embeddings")
 ```
 
-### Zero-Copy Memory Mapping (v2.2) 🆕
+### Zero-Copy Memory Mapping 🆕
 
 ```python
 from decompressed import pack_cvc, MMapCVCLoader
@@ -184,7 +184,7 @@ This deploys:
 | [`pack_cvc_sections_columnar`](#pack_cvc_sections_columnar) | Pack multi-column data with sections | `sections`, `output_path`, `compressions`, `chunk_size` |
 | [`load_cvc_columns`](#load_cvc_columns) | Load with selective columns | `path`, `columns`, `device`, `framework`, `section_key`, `section_value` |
 
-### v2.1 API (Column Manipulation) 🆕
+### Column Manipulation API 🆕
 
 | Function | Purpose | Arguments |
 |----------|---------|-----------|
@@ -194,7 +194,7 @@ This deploys:
 | `rename_column` | Rename column | `path`, `old_name`, `new_name`, `output_path` |
 | `list_columns` | List all columns with metadata | `path` |
 
-### v2.2 API (Zero-Copy MMap) 🆕
+### Zero-Copy Memory Mapping API 🆕
 
 | Class/Function | Purpose | Usage |
 |---------|---------|-------|
@@ -205,7 +205,7 @@ This deploys:
 
 | Function | Purpose | Arguments |
 |----------|---------|-----------|
-| [`get_cvc_info`](#get_cvc_info) | Get file metadata & schema (v1.x and v2.x) | `path` |
+| [`get_cvc_info`](#get_cvc_info) | Get file metadata & schema | `path` |
 | [`get_available_backends`](#get_available_backends) | Check available GPU backends | None |
 
 ---
