@@ -118,9 +118,9 @@ warn_no_return = true
 warn_unreachable = true
 
 [tool.pytest.ini_options]
+# Coverage disabled for release testing - enable manually with: pytest --cov=decompressed
+# addopts = "--cov=decompressed --cov-report=term-missing"
 testpaths = ["tests"]
-python_files = "test_*.py"
-addopts = "-v --cov=decompressed --cov-report=term-missing"
 
 [project.urls]
 Homepage = "https://github.com/Dev-ZC/Decompressed"
