@@ -1,0 +1,7 @@
+modal>=0.63.0
+decompressed
+torch
+numpy>=1.20.0
+fastapi[standard]
+sentence-transformers
+wikipedia-api

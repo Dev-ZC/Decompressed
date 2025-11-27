@@ -51,6 +51,18 @@ test_*.cvc
 *.cvc
 !format.md
 
+# Environment variables and secrets
+.env
+.env.local
+.env.*.local
+*.pem
+*.key
+token
+.modal/
+
+# Deployment scripts (local only)
+deploy.sh
+
 # OS
 .DS_Store
 Thumbs.db

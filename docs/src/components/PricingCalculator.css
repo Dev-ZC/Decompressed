@@ -69,6 +69,9 @@
   font-family: 'Space Grotesk', sans-serif;
   color: rgba(102, 126, 234, 1);
   font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 16px;
 }
 
 .slider {
@@ -265,6 +268,56 @@
 .storage-value {
   color: rgba(255, 255, 255, 0.9);
   font-weight: 600;
+}
+
+.storage .input-value {
+  color: rgba(255, 255, 255, 0.95);
+  font-weight: 600;
+  font-size: 0.95rem;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.default-tag {
+  font-size: 11px;
+  padding: 3px 8px;
+  border-radius: 4px;
+  border: 1px solid;
+  background: transparent;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  font-weight: 500;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.default-tag.active {
+  color: #3b82f6;
+  border-color: #3b82f6;
+  background: rgba(59, 130, 246, 0.1);
+}
+
+.default-tag.active:hover {
+  background: rgba(59, 130, 246, 0.2);
+  transform: scale(1.05);
+}
+
+.default-tag.inactive {
+  color: #94a3b8;
+  border-color: #475569;
+  opacity: 0.5;
+}
+
+.default-tag.inactive:hover {
+  opacity: 1;
+  background: rgba(148, 163, 184, 0.1);
+  transform: scale(1.05);
+}
+
+.default-tag i {
+  font-size: 10px;
 }
 
 .total-cost-display {

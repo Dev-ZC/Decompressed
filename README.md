@@ -58,6 +58,26 @@ arxiv_only = load_cvc_range("combined.cvc",
                            section_value="arxiv")
 ```
 
+### Deploy Your Own GPU Demo
+
+Want to deploy a live GPU-accelerated demo? Deploy in 5 minutes:
+
+```bash
+# Install Modal and authenticate
+pip install modal
+modal token new
+
+# One-command deploy
+./deploy.sh
+```
+
+This deploys:
+- 🚀 **Backend**: Modal.com (GPU auto-scaling, T4 GPU, $30/month free tier)
+- 🌐 **Frontend**: GitHub Pages (React SPA with live demo)
+- 💰 **Cost**: ~$7/month for instant responses (or free with credits)
+
+**Full guide**: See [QUICKSTART_DEPLOY.md](./QUICKSTART_DEPLOY.md)
+
 ---
 
 ## API Reference

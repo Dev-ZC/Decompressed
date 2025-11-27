@@ -1,13 +1,23 @@
 import React, { useState, useEffect } from 'react';
 import './PricingCalculator.css';
 
-export default function PricingCalculator() {
-  const [gpuCostPerHour, setGpuCostPerHour] = useState(3.5);
-  const [cpuCostPerHour, setCpuCostPerHour] = useState(0.8);
+export default function PricingCalculator({ searchData }) {
+  // Pricing defaults from real providers
+  const DEFAULT_GPU_COST = 0.526; // AWS EC2 g4dn.xlarge (T4 GPU)
+  const DEFAULT_CPU_COST = 0.096; // AWS EC2 c5.xlarge (4 vCPU)
+  const DEFAULT_STORAGE_COST = 0.10; // AWS S3 Standard
+  
+  const [gpuCostPerHour, setGpuCostPerHour] = useState(DEFAULT_GPU_COST);
+  const [cpuCostPerHour, setCpuCostPerHour] = useState(DEFAULT_CPU_COST);
+  const [storageGBCost, setStorageGBCost] = useState(DEFAULT_STORAGE_COST);
+  
+  const [gpuCostModified, setGpuCostModified] = useState(false);
+  const [cpuCostModified, setCpuCostModified] = useState(false);
+  const [storageCostModified, setStorageCostModified] = useState(false);
+  
   const [numberOfUsers, setNumberOfUsers] = useState(10000);
   const [queriesPerUser, setQueriesPerUser] = useState(50);
   const [avgVectorsPerQuery, setAvgVectorsPerQuery] = useState(1000);
-  const [storageGBCost, setStorageGBCost] = useState(0.15); // Per GB per month
   const [totalVectorsStored, setTotalVectorsStored] = useState(10000000); // 10M vectors
   const [period, setPeriod] = useState('month');
 
@@ -17,10 +27,18 @@ export default function PricingCalculator() {
     year: 365
   };
 
+  // Calculate real decompression throughput from search data if available
+  const realGpuDecompThroughput = searchData?.loadTime && searchData?.vectorsSearched 
+    ? (searchData.vectorsSearched / (searchData.loadTime / 1000)) // vectors per second (decompression only)
+    : null;
+  
   // Decompression throughput (vectors per second per instance)
-  const gpuThroughput = 5.2e6; // 5.2M vectors/sec per GPU
-  const cpuThroughput = 1.0e6; // 1M vectors/sec per CPU (realistic bottleneck)
-  const pythonThroughput = 0.4e6; // 400K vectors/sec (pure Python, much slower)
+  // Use realistic production throughput, not cold-start demo numbers
+  const gpuThroughput = realGpuDecompThroughput && realGpuDecompThroughput > 100000 
+    ? realGpuDecompThroughput 
+    : 2.0e6; // 2M vectors/sec per GPU (realistic production)
+  const cpuThroughput = 500000; // 500K vectors/sec per CPU (realistic production)
+  const pythonThroughput = 100000; // 100K vectors/sec (pure Python, much slower)
 
   const queriesPerDay = (numberOfUsers * queriesPerUser) / 30; // Spread over a month
   const totalQueries = queriesPerDay * periodMultiplier[period];
@@ -61,10 +79,13 @@ export default function PricingCalculator() {
   // Typically need 2-3x capacity for peak hours and redundancy
   const loadMultiplier = 2.5; // Peak load factor
   
-  // Calculate actual compute hours needed (considering always-on serving + peak capacity)
-  const gpuComputeHours = Math.max(hoursInPeriod * 0.3, gpuProcessingSeconds / 3600 * loadMultiplier);
-  const cpuComputeHours = Math.max(hoursInPeriod * 0.5, cpuProcessingSeconds / 3600 * loadMultiplier);
-  const pythonComputeHours = Math.max(hoursInPeriod * 0.8, pythonProcessingSeconds / 3600 * loadMultiplier);
+  // Calculate actual compute hours needed (scales with workload)
+  // For small workloads: use actual processing time + overhead
+  // For large workloads: use minimum uptime for 24/7 serving
+  const baseOverheadHours = 1; // 1 hour minimum overhead per period
+  const gpuComputeHours = Math.max(baseOverheadHours, gpuProcessingSeconds / 3600 * loadMultiplier);
+  const cpuComputeHours = Math.max(baseOverheadHours, cpuProcessingSeconds / 3600 * loadMultiplier);
+  const pythonComputeHours = Math.max(baseOverheadHours, pythonProcessingSeconds / 3600 * loadMultiplier);
 
   // Calculate compute costs (realistic for 24/7 serving)
   const gpuComputeCost = gpuComputeHours * gpuCostPerHour;
@@ -114,6 +135,65 @@ export default function PricingCalculator() {
         <i className="fas fa-calculator"></i>
         ROI Calculator [Approximation]
       </h3>
+      
+      {/* Live Search Data Display */}
+      {searchData && searchData.loadTime && (
+        <div style={{
+          background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+          padding: '16px',
+          borderRadius: '12px',
+          marginBottom: '20px',
+          color: 'white'
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px', fontWeight: 600 }}>
+            <i className="fas fa-chart-line"></i>
+            Using Your Live Search Results
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '12px', fontSize: '14px' }}>
+            <div>
+              <div style={{ opacity: 0.8, fontSize: '12px' }}>GPU Decompression</div>
+              <div style={{ fontWeight: 600, fontSize: '16px' }}>
+                {realGpuDecompThroughput ? `${(realGpuDecompThroughput / 1000).toFixed(1)}K vectors/sec` : 'N/A'}
+              </div>
+              <div style={{ opacity: 0.7, fontSize: '11px' }}>From your actual decompression</div>
+            </div>
+            <div>
+              <div style={{ opacity: 0.8, fontSize: '12px' }}>GPU Time</div>
+              <div style={{ fontWeight: 600, fontSize: '16px' }}>
+                {(searchData.loadTime / 1000).toFixed(2)}s
+              </div>
+              <div style={{ opacity: 0.7, fontSize: '11px' }}>Decompression + search</div>
+            </div>
+            <div>
+              <div style={{ opacity: 0.8, fontSize: '12px' }}>Vectors Processed</div>
+              <div style={{ fontWeight: 600, fontSize: '16px' }}>
+                {searchData.vectorsSearched?.toLocaleString()}
+              </div>
+              <div style={{ opacity: 0.7, fontSize: '11px' }}>From database</div>
+            </div>
+            <div>
+              <div style={{ opacity: 0.8, fontSize: '12px' }}>Speedup vs Python</div>
+              <div style={{ fontWeight: 600, fontSize: '16px' }}>
+                {searchData.speedupVsPython?.toFixed(1)}×
+              </div>
+              <div style={{ opacity: 0.7, fontSize: '11px' }}>Real measured</div>
+            </div>
+          </div>
+          <div style={{ 
+            marginTop: '12px', 
+            padding: '8px 12px', 
+            background: 'rgba(255, 255, 255, 0.15)', 
+            borderRadius: '6px',
+            fontSize: '12px',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px'
+          }}>
+            <i className="fas fa-info-circle"></i>
+            Calculator now uses YOUR actual GPU performance from the search above
+          </div>
+        </div>
+      )}
       
       <div className="calculator-inputs">
         <div className="input-row">
@@ -188,15 +268,30 @@ export default function PricingCalculator() {
           <div className="input-group">
             <label>
               <span>GPU Cost</span>
-              <span className="input-value">${gpuCostPerHour.toFixed(2)}/hr</span>
+              <span className="input-value">
+                <button
+                  className={`default-tag ${!gpuCostModified ? 'active' : 'inactive'}`}
+                  onClick={() => {
+                    setGpuCostPerHour(DEFAULT_GPU_COST);
+                    setGpuCostModified(false);
+                  }}
+                  title="Reset to AWS g4dn.xlarge pricing"
+                >
+                  <i className="fas fa-aws"></i> AWS T4
+                </button>
+                ${gpuCostPerHour.toFixed(3)}/hr
+              </span>
             </label>
             <input
               type="range"
-              min="0.5"
+              min="0.1"
               max="10"
-              step="0.1"
+              step="0.001"
               value={gpuCostPerHour}
-              onChange={(e) => setGpuCostPerHour(parseFloat(e.target.value))}
+              onChange={(e) => {
+                setGpuCostPerHour(parseFloat(e.target.value));
+                setGpuCostModified(true);
+              }}
               className="slider"
             />
           </div>
@@ -204,15 +299,30 @@ export default function PricingCalculator() {
           <div className="input-group">
             <label>
               <span>CPU Cost</span>
-              <span className="input-value">${cpuCostPerHour.toFixed(2)}/hr</span>
+              <span className="input-value">
+                <button
+                  className={`default-tag ${!cpuCostModified ? 'active' : 'inactive'}`}
+                  onClick={() => {
+                    setCpuCostPerHour(DEFAULT_CPU_COST);
+                    setCpuCostModified(false);
+                  }}
+                  title="Reset to AWS c5.xlarge pricing"
+                >
+                  <i className="fas fa-aws"></i> AWS c5.xlarge
+                </button>
+                ${cpuCostPerHour.toFixed(3)}/hr
+              </span>
             </label>
             <input
               type="range"
-              min="0.1"
+              min="0.01"
               max="3"
-              step="0.1"
+              step="0.001"
               value={cpuCostPerHour}
-              onChange={(e) => setCpuCostPerHour(parseFloat(e.target.value))}
+              onChange={(e) => {
+                setCpuCostPerHour(parseFloat(e.target.value));
+                setCpuCostModified(true);
+              }}
               className="slider"
             />
           </div>
@@ -221,15 +331,30 @@ export default function PricingCalculator() {
         <div className="input-group">
           <label>
             <span>Storage Cost</span>
-            <span className="input-value">${storageGBCost.toFixed(2)}/GB/month</span>
+            <span className="input-value">
+              <button
+                className={`default-tag ${!storageCostModified ? 'active' : 'inactive'}`}
+                onClick={() => {
+                  setStorageGBCost(DEFAULT_STORAGE_COST);
+                  setStorageCostModified(false);
+                }}
+                title="Reset to AWS S3 Standard pricing"
+              >
+                <i className="fas fa-aws"></i> AWS S3
+              </button>
+              ${storageGBCost.toFixed(3)}/GB/month
+            </span>
           </label>
           <input
             type="range"
             min="0.01"
             max="0.5"
-            step="0.01"
+            step="0.001"
             value={storageGBCost}
-            onChange={(e) => setStorageGBCost(parseFloat(e.target.value))}
+            onChange={(e) => {
+              setStorageGBCost(parseFloat(e.target.value));
+              setStorageCostModified(true);
+            }}
             className="slider"
           />
         </div>
@@ -401,6 +526,28 @@ export default function PricingCalculator() {
             <i className="fas fa-info-circle"></i>
             How These Savings Are Calculated
           </h4>
+          <div className="pricing-sources" style={{
+            background: '#f8fafc',
+            padding: '12px 16px',
+            borderRadius: '8px',
+            marginBottom: '20px',
+            fontSize: '13px',
+            color: '#64748b'
+          }}>
+            <div style={{ marginBottom: '8px' }}>
+              <strong style={{ color: '#334155' }}>Pricing Sources:</strong>
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+              <div>• <strong>GPU:</strong> AWS EC2 g4dn.xlarge (T4 GPU) - ${DEFAULT_GPU_COST}/hr</div>
+              <div>• <strong>CPU:</strong> AWS EC2 c5.xlarge (4 vCPU, 8GB RAM) - ${DEFAULT_CPU_COST}/hr</div>
+              <div>• <strong>Storage:</strong> AWS S3 Standard - ${DEFAULT_STORAGE_COST}/GB/month</div>
+              <div style={{ marginTop: '4px', fontSize: '12px' }}>
+                <a href="https://aws.amazon.com/ec2/pricing/on-demand/" target="_blank" rel="noopener noreferrer" style={{ color: '#3b82f6', textDecoration: 'none' }}>
+                  View AWS Pricing <i className="fas fa-external-link-alt" style={{ fontSize: '10px', marginLeft: '4px' }}></i>
+                </a>
+              </div>
+            </div>
+          </div>
           
           <div className="breakdown-section">
             <h5>Query Volume</h5>
