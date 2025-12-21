@@ -8,7 +8,7 @@ build-backend = "scikit_build_core.build"
 
 [project]
 name = "decompressed"
-version = "2.0.0"
+version = "2.1.0"
 description = "GPU-native vector compression and decompression library for embeddings and similarity search"
 authors = [
     {name = "Zaki Cole", email = "zakicole74@gmail.com"},
