@@ -151,7 +151,7 @@ def validate_cvc(path: str) -> Dict[str, Any]:
             num_chunks = len(chunks_meta)
             
             # Validate compression type
-            if compression not in ['fp16', 'int8']:
+            if compression not in ['fp16', 'int8', 'lossless']:
                 warnings.append(f"Unknown compression type: {compression}")
             
             # Validate chunk metadata

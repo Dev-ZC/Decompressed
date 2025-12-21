@@ -20,9 +20,25 @@ class CUDABackend(BackendInterface):
             self._available = CUDA_AVAILABLE
         except ImportError:
             self._available = False
+        
+        # Lossless uses Triton fallback (CUDA native kernel would need separate C++ impl)
+        # For now, fall back to CPU + transfer
+        from ..decompress import decompress_lossless_cpu
+        self.decompress_lossless_cpu = decompress_lossless_cpu
     
     def decompress_chunk(self, payload, rows, dim, compression, chunk_meta, arr, offset, framework="torch"):
         """Decompress using CUDA native kernels."""
+        # Handle lossless with CPU fallback (TODO: implement CUDA native version)
+        if compression == "lossless":
+            result = self.decompress_lossless_cpu(payload, rows, dim)
+            if framework == "torch":
+                import torch
+                arr[offset:offset+rows] = torch.from_numpy(result).cuda()
+            elif framework == "cupy":
+                import cupy as cp
+                arr[offset:offset+rows] = cp.asarray(result)
+            return
+        
         try:
             # Convert payload to numpy array
             if compression == "fp16":
@@ -104,9 +120,11 @@ class TritonBackend(BackendInterface):
             import triton
             from ..triton.decompress_fp16_triton import decompress_fp16_kernel
             from ..triton.decompress_int8_triton import decompress_int8_triton_kernel as decompress_int8_kernel
+            from ..triton.decompress_lossless_triton import byte_unshuffle_kernel
             
             self.decompress_fp16_kernel = decompress_fp16_kernel
             self.decompress_int8_kernel = decompress_int8_kernel
+            self.byte_unshuffle_kernel = byte_unshuffle_kernel
             self.triton = triton
             self._available = True
         except Exception as e:
@@ -133,6 +151,53 @@ class TritonBackend(BackendInterface):
     
     def _decompress_chunk_impl(self, payload, rows, dim, compression, chunk_meta, arr, offset, framework):
         """Internal implementation of chunk decompression."""
+        # Handle lossless with GPU-native byte-unshuffle
+        if compression == "lossless":
+            n_values = rows * dim
+            
+            # Convert payload to GPU
+            shuffled_data = np.frombuffer(payload, dtype=np.uint8).copy()
+            
+            if framework == "torch":
+                import torch
+                shuffled_gpu = torch.from_numpy(shuffled_data).cuda()
+                dst_slice = arr[offset:offset+rows].flatten()
+                
+                # Launch byte-unshuffle kernel
+                BLOCK_SIZE = 1024
+                grid = lambda meta: (self.triton.cdiv(n_values, BLOCK_SIZE),)
+                
+                self.byte_unshuffle_kernel[grid](
+                    shuffled_gpu,
+                    dst_slice,
+                    n_values,
+                    BLOCK_SIZE
+                )
+                torch.cuda.synchronize()
+                
+            elif framework == "cupy":
+                import cupy as cp
+                import torch
+                
+                # Convert to PyTorch for Triton
+                shuffled_torch = torch.from_numpy(shuffled_data).cuda()
+                dst_slice = arr[offset:offset+rows].flatten()
+                dst_torch = torch.as_tensor(dst_slice, device='cuda')
+                
+                # Launch byte-unshuffle kernel
+                BLOCK_SIZE = 1024
+                grid = lambda meta: (self.triton.cdiv(n_values, BLOCK_SIZE),)
+                
+                self.byte_unshuffle_kernel[grid](
+                    shuffled_torch,
+                    dst_torch,
+                    n_values,
+                    BLOCK_SIZE
+                )
+                torch.cuda.synchronize()
+            
+            return
+        
         # Convert payload to numpy array
         if compression == "fp16":
             src_data = np.frombuffer(payload, dtype=np.float16).copy()
