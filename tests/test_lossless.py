@@ -74,17 +74,20 @@ class TestLosslessCompression:
         print("✓ Lossless compression is truly bit-perfect")
     
     def test_lossless_size(self):
-        """Lossless compression size matches original (byte-shuffle is structure-preserving)."""
+        """Lossless compression achieves good ratios with bit-packing."""
         vectors = np.random.randn(1000, 768).astype(np.float32)
         
         original_size = vectors.nbytes
         compressed = compress_lossless(vectors)
         compressed_size = len(compressed)
         
-        # Byte-shuffling doesn't reduce size, it just rearranges bytes for GPU efficiency
-        # This enables downstream compression (e.g., zlib on the file) or GPU parallelism
-        assert compressed_size == original_size, f"Byte-shuffle should preserve size: {original_size} vs {compressed_size}"
-        print(f"✓ Byte-shuffle preserves size: {original_size} bytes (enables GPU-native decompression)")
+        # Bit-packing reduces size by compressing redundant high bytes
+        # Random data: 85-95% (10-15% compression)
+        # Real embeddings: 70-80% (20-30% compression) due to more structure
+        ratio = compressed_size / original_size
+        assert compressed_size < original_size, f"Compressed should be smaller: {compressed_size} vs {original_size}"
+        assert compressed_size > original_size * 0.5, f"Shouldn't compress more than 50%: {ratio:.1%}"
+        print(f"✓ Lossless compression: {original_size} → {compressed_size} bytes ({100*ratio:.1f}%) - GPU-native + bit-perfect")
     
     def test_pack_cvc_lossless_deterministic(self):
         """Packing with lossless compression is deterministic."""

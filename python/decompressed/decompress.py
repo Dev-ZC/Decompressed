@@ -58,16 +58,60 @@ def _byte_unshuffle(shuffled_data: bytes, n_values: int) -> bytes:
     return byte_matrix.flatten().tobytes()
 
 
-def decompress_lossless_cpu(data: bytes, rows: int, dim: int) -> np.ndarray:
+def _bit_unpack_plane(packed_data: bytes, n_values: int, bits_per_value: int) -> np.ndarray:
     """
-    Pure Python lossless decompression (byte-unshuffle only).
-    
-    This is a simple memory swizzle operation that reverses the
-    byte-shuffling compression. On CPU it's sequential, but on GPU
-    it becomes massively parallel.
+    Unpack bit-packed plane back to full bytes.
     
     Args:
-        data: Byte-shuffled data (4 contiguous byte planes)
+        packed_data: Bit-packed bytes
+        n_values: Number of values to unpack
+        bits_per_value: Number of bits per value (1-8)
+    
+    Returns:
+        Unpacked uint8 array
+    """
+    if bits_per_value == 8:
+        # No unpacking needed
+        return np.frombuffer(packed_data, dtype=np.uint8)
+    
+    packed = np.frombuffer(packed_data, dtype=np.uint8)
+    unpacked = np.zeros(n_values, dtype=np.uint8)
+    
+    bit_offset = 0
+    for i in range(n_values):
+        value = 0
+        remaining_bits = bits_per_value
+        
+        while remaining_bits > 0:
+            byte_idx = bit_offset // 8
+            bit_in_byte = bit_offset % 8
+            bits_to_read = min(8 - bit_in_byte, remaining_bits)
+            
+            # Extract bits
+            shift = 8 - bit_in_byte - bits_to_read
+            mask = ((1 << bits_to_read) - 1) << shift
+            bits = (packed[byte_idx] & mask) >> shift
+            
+            # Add to value
+            value = (value << bits_to_read) | bits
+            
+            remaining_bits -= bits_to_read
+            bit_offset += bits_to_read
+        
+        unpacked[i] = value
+    
+    return unpacked
+
+
+def decompress_lossless_cpu(data: bytes, rows: int, dim: int) -> np.ndarray:
+    """
+    Pure Python lossless decompression (bit-unpack + byte-unshuffle).
+    
+    This reverses the compression: bit-unpacking each plane, then
+    byte-unshuffling to restore the original float32 layout.
+    
+    Args:
+        data: Bit-packed byte-shuffled data with header
         rows: Number of vectors
         dim: Dimension of each vector
     
@@ -76,8 +120,48 @@ def decompress_lossless_cpu(data: bytes, rows: int, dim: int) -> np.ndarray:
     """
     n_values = rows * dim
     
-    # Byte-unshuffle to restore original layout
-    byte_data = _byte_unshuffle(data, n_values)
+    # Parse header
+    offset = 0
+    
+    # Read n_values
+    stored_n_values = int.from_bytes(data[offset:offset+4], 'little')
+    offset += 4
+    
+    if stored_n_values != n_values:
+        raise ValueError(f"Value count mismatch: expected {n_values}, got {stored_n_values}")
+    
+    # Read bits per plane
+    bits_per_plane = list(data[offset:offset+4])
+    offset += 4
+    
+    # Unpack each plane
+    byte_planes = []
+    for plane_idx in range(4):
+        # Read dictionary
+        dict_size = int.from_bytes(data[offset:offset+2], 'little')
+        offset += 2
+        
+        dictionary = np.frombuffer(data[offset:offset+dict_size], dtype=np.uint8)
+        offset += dict_size
+        
+        # Calculate packed data size
+        bits_needed = bits_per_plane[plane_idx]
+        packed_size = (n_values * bits_needed + 7) // 8
+        
+        packed_data = data[offset:offset+packed_size]
+        offset += packed_size
+        
+        # Bit-unpack
+        codes = _bit_unpack_plane(packed_data, n_values, bits_needed)
+        
+        # Decode using dictionary
+        plane = dictionary[codes]
+        byte_planes.append(plane)
+    
+    # Stack planes and byte-unshuffle
+    byte_planes_array = np.stack(byte_planes, axis=0)  # Shape: (4, n_values)
+    byte_matrix = byte_planes_array.T  # Shape: (n_values, 4)
+    byte_data = byte_matrix.flatten().tobytes()
     
     # Convert back to float32
     float_data = np.frombuffer(byte_data, dtype=np.float32)

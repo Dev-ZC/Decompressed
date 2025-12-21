@@ -120,11 +120,17 @@ class TritonBackend(BackendInterface):
             import triton
             from ..triton.decompress_fp16_triton import decompress_fp16_kernel
             from ..triton.decompress_int8_triton import decompress_int8_triton_kernel as decompress_int8_kernel
-            from ..triton.decompress_lossless_triton import byte_unshuffle_kernel
+            from ..triton.decompress_lossless_triton import (
+                bit_unpack_kernel,
+                byte_unshuffle_kernel,
+                decompress_lossless_triton
+            )
             
             self.decompress_fp16_kernel = decompress_fp16_kernel
             self.decompress_int8_kernel = decompress_int8_kernel
+            self.bit_unpack_kernel = bit_unpack_kernel
             self.byte_unshuffle_kernel = byte_unshuffle_kernel
+            self.decompress_lossless_triton = decompress_lossless_triton
             self.triton = triton
             self._available = True
         except Exception as e:
@@ -151,51 +157,11 @@ class TritonBackend(BackendInterface):
     
     def _decompress_chunk_impl(self, payload, rows, dim, compression, chunk_meta, arr, offset, framework):
         """Internal implementation of chunk decompression."""
-        # Handle lossless with GPU-native byte-unshuffle
+        # Handle lossless with GPU-native bit-unpack + byte-unshuffle
         if compression == "lossless":
-            n_values = rows * dim
-            
-            # Convert payload to GPU
-            shuffled_data = np.frombuffer(payload, dtype=np.uint8).copy()
-            
-            if framework == "torch":
-                import torch
-                shuffled_gpu = torch.from_numpy(shuffled_data).cuda()
-                dst_slice = arr[offset:offset+rows].flatten()
-                
-                # Launch byte-unshuffle kernel
-                BLOCK_SIZE = 1024
-                grid = lambda meta: (self.triton.cdiv(n_values, BLOCK_SIZE),)
-                
-                self.byte_unshuffle_kernel[grid](
-                    shuffled_gpu,
-                    dst_slice,
-                    n_values,
-                    BLOCK_SIZE
-                )
-                torch.cuda.synchronize()
-                
-            elif framework == "cupy":
-                import cupy as cp
-                import torch
-                
-                # Convert to PyTorch for Triton
-                shuffled_torch = torch.from_numpy(shuffled_data).cuda()
-                dst_slice = arr[offset:offset+rows].flatten()
-                dst_torch = torch.as_tensor(dst_slice, device='cuda')
-                
-                # Launch byte-unshuffle kernel
-                BLOCK_SIZE = 1024
-                grid = lambda meta: (self.triton.cdiv(n_values, BLOCK_SIZE),)
-                
-                self.byte_unshuffle_kernel[grid](
-                    shuffled_torch,
-                    dst_torch,
-                    n_values,
-                    BLOCK_SIZE
-                )
-                torch.cuda.synchronize()
-            
+            # Use high-level wrapper that handles bit-unpacking + byte-unshuffling
+            result = self.decompress_lossless_triton(payload, rows, dim, framework)
+            arr[offset:offset+rows] = result
             return
         
         # Convert payload to numpy array
