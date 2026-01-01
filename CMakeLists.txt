@@ -74,10 +74,21 @@ target_include_directories(cvc_cpu PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 set_target_properties(cvc_cpu PROPERTIES
     POSITION_INDEPENDENT_CODE ON
 )
-target_compile_options(cvc_cpu PRIVATE
-    $<$<CXX_COMPILER_ID:GNU,Clang,AppleClang>:-O3 -march=native -Wall -Wextra>
-    $<$<CXX_COMPILER_ID:MSVC>:/O2 /W4>
-)
+
+# Architecture-specific compiler flags
+if(CMAKE_SYSTEM_PROCESSOR MATCHES "arm64|aarch64|ARM64")
+    # ARM64: use -mcpu=native (clang on ARM64 doesn't support -march)
+    target_compile_options(cvc_cpu PRIVATE
+        $<$<CXX_COMPILER_ID:GNU,Clang,AppleClang>:-O3 -mcpu=native -Wall -Wextra>
+        $<$<CXX_COMPILER_ID:MSVC>:/O2 /W4>
+    )
+else()
+    # x86_64: use -march=native
+    target_compile_options(cvc_cpu PRIVATE
+        $<$<CXX_COMPILER_ID:GNU,Clang,AppleClang>:-O3 -march=native -Wall -Wextra>
+        $<$<CXX_COMPILER_ID:MSVC>:/O2 /W4>
+    )
+endif()
 
 # CUDA library
 if(BUILD_CUDA)
