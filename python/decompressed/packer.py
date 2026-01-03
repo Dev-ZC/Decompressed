@@ -20,13 +20,13 @@ def pack_cvc(vectors, output_path, compression="fp16", chunk_size=100000, chunk_
     Args:
         vectors: np.ndarray of shape (n_vectors, dimension), dtype float32
         output_path: Path to output .cvc file
-        compression: "fp16", "int8", or "lossless"
+        compression: "fp16", "int8", "lossless", or "none"
         chunk_size: Number of vectors per chunk
         chunk_metadata: Optional list of dicts with metadata per chunk
         mmap_optimized: If True, align chunks to 4KB boundaries for mmap efficiency
     """
-    if compression not in ["fp16", "int8", "lossless"]:
-        raise ValueError(f"Unknown compression: {compression}. Use 'fp16', 'int8', or 'lossless'")
+    if compression not in ["fp16", "int8", "lossless", "none"]:
+        raise ValueError(f"Unknown compression: {compression}. Use 'fp16', 'int8', 'lossless', or 'none'")
     
     n_vectors, dim = vectors.shape
     
@@ -56,9 +56,12 @@ def pack_cvc(vectors, output_path, compression="fp16", chunk_size=100000, chunk_
                 "min": minv,
                 "scale": scale
             }
-        else:  # lossless
+        elif compression == "lossless":
             payload = compress_lossless(chunk_vectors)
             chunk_meta = {"rows": rows, "compression": "lossless"}
+        else:  # none
+            payload = chunk_vectors.tobytes()
+            chunk_meta = {"rows": rows, "compression": "none"}
         
         if chunk_metadata:
             chunk_meta["metadata"] = chunk_metadata[len(chunks_meta)]
@@ -138,7 +141,7 @@ def pack_cvc_sections(sections, output_path, compression="fp16", chunk_size=1000
                  - array: np.ndarray of shape (n_vectors, dimension), dtype float32
                  - metadata_dict: dict with metadata for this section
         output_path: Path to output .cvc file
-        compression: "fp16", "int8", or "lossless"
+        compression: "fp16", "int8", "lossless", or "none"
         chunk_size: Number of vectors per chunk (applies to all sections)
     
     Example:
@@ -152,8 +155,8 @@ def pack_cvc_sections(sections, output_path, compression="fp16", chunk_size=1000
         >>> 
         >>> pack_cvc_sections(sections, "combined.cvc", chunk_size=10_000)
     """
-    if compression not in ["fp16", "int8", "lossless"]:
-        raise ValueError(f"Unknown compression: {compression}. Use 'fp16', 'int8', or 'lossless'")
+    if compression not in ["fp16", "int8", "lossless", "none"]:
+        raise ValueError(f"Unknown compression: {compression}. Use 'fp16', 'int8', 'lossless', or 'none'")
     
     if not sections:
         raise ValueError("sections cannot be empty")
@@ -222,11 +225,18 @@ def pack_cvc_sections(sections, output_path, compression="fp16", chunk_size=1000
                 "scale": scale,
                 "sections": chunk_sections
             }
-        else:  # lossless
+        elif compression == "lossless":
             payload = compress_lossless(chunk_vectors)
             chunk_meta = {
                 "rows": rows,
                 "compression": "lossless",
+                "sections": chunk_sections
+            }
+        else:  # none
+            payload = chunk_vectors.tobytes()
+            chunk_meta = {
+                "rows": rows,
+                "compression": "none",
                 "sections": chunk_sections
             }
         

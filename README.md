@@ -36,6 +36,9 @@ embeddings = np.random.randn(100_000, 768).astype(np.float32)
 # Pack with compression (2× smaller with FP16)
 pack_cvc(embeddings, "embeddings.cvc", compression="fp16")
 
+# Or use lossless for exact reconstruction (1.5-2.5× smaller, zero loss)
+pack_cvc(embeddings, "embeddings_lossless.cvc", compression="lossless")
+
 # Load back
 vectors = load_cvc("embeddings.cvc")
 ```
@@ -53,9 +56,9 @@ data = {
 }
 
 pack_cvc_columns(data, "multi_modal.cvc", compressions={
-    "text": "fp16",
-    "image": "int8",
-    "doc_id": "none"
+    "text": "lossless",   # Exact reconstruction for critical data
+    "image": "int8",      # High compression for embeddings
+    "doc_id": "none"      # No compression for IDs
 })
 
 # Load only specific columns (2-5× faster)
@@ -220,6 +223,21 @@ This deploys:
 - **Multiple compression schemes**
   - **FP16**: 2× compression vs FP32 with minimal accuracy loss.
   - **INT8**: 4× compression vs FP32 via linear quantization.
+  - **Lossless**: Compresses FP32 by 1.5-2.5× (variable) with exact bit-perfect reconstruction via bit-packing + byte-shuffling.
+
+### Choosing the Right Compression
+
+| Compression | Ratio | Accuracy | Best For |
+|-------------|-------|----------|----------|
+| **`lossless`** | 1.5-2.5× | **Exact** (bit-perfect) | Financial data, medical embeddings, model weights, compliance requirements |
+| **`fp16`** | 2× | ~99.9% (minimal loss) | General embeddings, RAG systems, semantic search |
+| **`int8`** | 4× | ~95-98% (quantization) | Large-scale retrieval, approximate search, storage-critical applications |
+| **`none`** | 1× | Exact | IDs, metadata, small arrays |
+
+**Quick decision tree:**
+- Need **exact reconstruction**? → `lossless`
+- Need **maximum compression**? → `int8`
+- Need **balance** of size & quality? → `fp16`
 
 - **Chunked, streaming format**
   - `.cvc` format is chunked for efficient storage and streaming.
@@ -543,8 +561,9 @@ pack_cvc(vectors, output_path, compression="fp16", chunk_size=100000, chunk_meta
 
 - `compression`: `str`  
   Compression scheme:
-  - `"fp16"`: half-precision floats.
-  - `"int8"`: 8‑bit linear quantization with per-chunk `min` and `scale`.
+  - `"fp16"`: half-precision floats (2× compression, minimal loss).
+  - `"int8"`: 8‑bit linear quantization with per-chunk `min` and `scale` (4× compression, quantization loss).
+  - `"lossless"`: bit-packing + byte-shuffling (1.5-2.5× compression, zero loss).
 
 - `chunk_size`: `int`  
   Number of vectors per chunk.
@@ -611,7 +630,7 @@ pack_cvc_sections(sections, output_path, compression="fp16", chunk_size=100000)
   Path at which to write the `.cvc` file.
 
 - `compression`: `str`  
-  Compression scheme (`"fp16"` or `"int8"`).
+  Compression scheme (`"fp16"`, `"int8"`, or `"lossless"`).
 
 - `chunk_size`: `int`  
   Number of vectors per chunk (applied uniformly to all sections).
@@ -956,13 +975,14 @@ This logic is implemented in `select_backend` and `validate_backend_availability
 - Triton kernels run on the GPU to perform:
   - FP16 → FP32 conversion (for `compression="fp16"`).
   - INT8 dequantization (for `compression="int8"`) using stored `min`/`scale`.
+  - Bit-unpacking + byte-unshuffling (for `compression="lossless"`) to reconstruct exact FP32 values.
 - Output: `torch.Tensor` or `cupy.ndarray` on the GPU.
 
 ### GPU with CUDA native (under development)
 
 - Design goal: provide a custom CUDA kernel path optimized for NVIDIA GPUs.
 - Intended behavior:
-  - Use CUDA kernels for FP16 and INT8 decompression.
+  - Use CUDA kernels for FP16, INT8, and lossless decompression.
   - Match or exceed Triton throughput on NVIDIA hardware.
 - Current state:
   - The backend is under active development and may not be available in all builds.

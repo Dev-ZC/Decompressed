@@ -23,6 +23,10 @@ class PythonBackend(BackendInterface):
             )
         elif compression == "lossless":
             arr[offset:offset+rows] = self.decompress_lossless(payload, rows, dim)
+        elif compression == "none":
+            # Uncompressed - direct bytes to float32
+            data = np.frombuffer(payload, dtype=np.float32)
+            arr[offset:offset+rows] = data.reshape(rows, dim)
         else:
             raise ValueError(f"Unknown compression type: {compression}")
     
@@ -59,6 +63,10 @@ class CPPBackend(BackendInterface):
             arr[offset:offset+rows] = result.reshape(rows, dim)
         elif compression == "lossless":
             arr[offset:offset+rows] = self.decompress_lossless(payload, rows, dim)
+        elif compression == "none":
+            # Uncompressed - direct bytes to float32
+            data = np.frombuffer(payload, dtype=np.float32)
+            arr[offset:offset+rows] = data.reshape(rows, dim)
         else:
             raise ValueError(f"Unknown compression type: {compression}")
     

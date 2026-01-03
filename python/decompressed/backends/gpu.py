@@ -39,6 +39,17 @@ class CUDABackend(BackendInterface):
                 arr[offset:offset+rows] = cp.asarray(result)
             return
         
+        # Handle uncompressed data
+        if compression == "none":
+            data = np.frombuffer(payload, dtype=np.float32).reshape(rows, dim)
+            if framework == "torch":
+                import torch
+                arr[offset:offset+rows] = torch.from_numpy(data).cuda()
+            elif framework == "cupy":
+                import cupy as cp
+                arr[offset:offset+rows] = cp.asarray(data)
+            return
+        
         try:
             # Convert payload to numpy array
             if compression == "fp16":
@@ -162,6 +173,17 @@ class TritonBackend(BackendInterface):
             # Use high-level wrapper that handles bit-unpacking + byte-unshuffling
             result = self.decompress_lossless_triton(payload, rows, dim, framework)
             arr[offset:offset+rows] = result
+            return
+        
+        # Handle uncompressed data
+        if compression == "none":
+            data = np.frombuffer(payload, dtype=np.float32).reshape(rows, dim)
+            if framework == "torch":
+                import torch
+                arr[offset:offset+rows] = torch.from_numpy(data).cuda()
+            elif framework == "cupy":
+                import cupy as cp
+                arr[offset:offset+rows] = cp.asarray(data)
             return
         
         # Convert payload to numpy array
